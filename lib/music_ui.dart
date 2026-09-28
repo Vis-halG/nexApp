@@ -716,6 +716,7 @@ class _NavRow extends StatelessWidget {
     required this.title,
     this.subtitle,
     required this.onTap,
+    this.onLongPress,
     this.trailing,
     this.showChevron = true,
   });
@@ -725,6 +726,7 @@ class _NavRow extends StatelessWidget {
   final String? trailing;
   final bool showChevron;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -746,6 +748,7 @@ class _NavRow extends StatelessWidget {
       ],
     ),
     onTap: onTap,
+    onLongPress: onLongPress,
   );
 }
 
@@ -5231,8 +5234,10 @@ class ProfileScreen extends StatelessWidget {
           _NavRow(
             icon: Icons.system_update_rounded,
             title: 'Check for updates',
+            subtitle: 'Tap to check · Long press to preview',
             trailing: 'v${music.installedVersion}',
             onTap: () => _manualCheckAppUpdate(context),
+            onLongPress: () => _manualCheckAppUpdate(context, force: true),
           ),
         _NavRow(
           icon: Icons.logout_rounded,
@@ -5262,18 +5267,26 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-Future<void> _manualCheckAppUpdate(BuildContext context) async {
+Future<void> _manualCheckAppUpdate(
+  BuildContext context, {
+  bool force = false,
+}) async {
   final scaffold = ScaffoldMessenger.of(context);
   final music = context.read<MusicController>();
   scaffold.showSnackBar(
-    const SnackBar(
-      content: Text('Checking for updates…'),
-      duration: Duration(seconds: 1),
+    SnackBar(
+      content: Text(
+        force ? 'Loading update preview…' : 'Checking for updates…',
+      ),
+      duration: const Duration(seconds: 1),
     ),
   );
   try {
     await music.preferences.remove('dismissed_update_tag');
-    final update = await AppUpdateService().checkForUpdate(phone: music.phone);
+    final update = await AppUpdateService().checkForUpdate(
+      phone: music.phone,
+      force: force,
+    );
     if (!context.mounted) return;
     scaffold.hideCurrentSnackBar();
     if (update != null) {

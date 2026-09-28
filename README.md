@@ -4,7 +4,7 @@ Flutter app for shared music, online songs and videos.
 Signed-in listeners can upload songs and videos into shared categories. Files
 are stored on Cloudinary; Firebase handles login and the shared listing.
 
-Version `0.3.2+8020` has four tabs: Home, Stream, Library and Profile. Home
+Version `0.3.3+8021` has four tabs: Home, Stream, Library and Profile. Home
 groups songs and videos into recently played/watched, liked, most played and
 never played collections. Stream combines JioSaavn and YouTube Music with
 Quick Picks, song radio and a YouTube video filter. Movie discovery and its

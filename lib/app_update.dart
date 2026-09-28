@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'phone_services.dart';
 
 /// Fallback installed version of nexApp (matches pubspec.yaml).
-const String currentAppVersion = '0.3.2+8020';
+const String currentAppVersion = '0.3.3+8021';
 
 class AppUpdateInfo {
   const AppUpdateInfo({
@@ -92,9 +92,11 @@ class AppUpdateService {
   /// Checks GitHub Releases for a newer version than [currentVersion].
   /// When [currentVersion] is null, queries [phone] for the real installed APK
   /// version via Android PackageManager, falling back to [currentAppVersion].
+  /// If [force] is true, checks and returns the latest release regardless of version.
   Future<AppUpdateInfo?> checkForUpdate({
     String? currentVersion,
     PhoneServices? phone,
+    bool force = false,
   }) async {
     String? effectiveVersion;
     if (phone != null) {
@@ -143,7 +145,7 @@ class AppUpdateService {
           ? tagName.substring(1)
           : tagName;
 
-      if (!isNewerVersion(versionCandidate, effectiveVersion)) {
+      if (!force && !isNewerVersion(versionCandidate, effectiveVersion)) {
         debugPrint(
           'App is up to date: local=$effectiveVersion, remote=$versionCandidate',
         );
