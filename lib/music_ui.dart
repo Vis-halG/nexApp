@@ -2111,6 +2111,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
       : '$_category songs';
 
   Future<void> _load({bool more = false, bool refresh = false}) async {
+    if (more && (_loading || _loadingMore || !_hasMore || _category == 'Quick Picks')) return;
     _debounce?.cancel();
     final request = ++_request;
     final music = context.read<MusicController>();
@@ -2127,33 +2128,41 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
         _hasMore = false;
       }
     });
-    final result = await music.discovery.browse(
-      query: more && query.isEmpty ? 'Trending Indian music' : query,
-      videos: videos,
-      page: more && query.isEmpty ? page - 1 : page,
-      limit: 20,
-    );
-    if (!mounted || request != _request) return;
-    final home = !videos && query.isEmpty && !more;
-    setState(() {
-      final combined = mergeMusicResults([
-        [..._songs, ...result.songs],
-      ]);
-      _hasMore = result.songs.isNotEmpty && combined.length > _songs.length;
-      _songs = combined;
-      _unavailable = result.unavailable;
-      _page = page;
-      _loading = false;
-      _loadingMore = false;
-    });
-    if (home) {
-      final picks = await music.fetchQuickPicks(limit: 12);
-      final similar = await music.fetchSimilarToLastPlayed(limit: 12);
+    try {
+      final result = await music.discovery.browse(
+        query: more && query.isEmpty ? 'Trending Indian music' : query,
+        videos: videos,
+        page: more && query.isEmpty ? page - 1 : page,
+        limit: 20,
+      );
+      if (!mounted || request != _request) return;
+      final home = !videos && query.isEmpty && !more;
+      setState(() {
+        final combined = mergeMusicResults([
+          [..._songs, ...result.songs],
+        ]);
+        _hasMore = result.songs.isNotEmpty && combined.length > _songs.length;
+        _songs = combined;
+        _unavailable = result.unavailable;
+        _page = page;
+        _loading = false;
+        _loadingMore = false;
+      });
+      if (home) {
+        final picks = await music.fetchQuickPicks(limit: 12);
+        final similar = await music.fetchSimilarToLastPlayed(limit: 12);
+        if (!mounted || request != _request) return;
+        setState(() {
+          _quickPicks = picks;
+          _similar = similar?.songs ?? [];
+          _similarTitle = similar?.title ?? '';
+        });
+      }
+    } catch (_) {
       if (!mounted || request != _request) return;
       setState(() {
-        _quickPicks = picks;
-        _similar = similar?.songs ?? [];
-        _similarTitle = similar?.title ?? '';
+        _loading = false;
+        _loadingMore = false;
       });
     }
   }
@@ -2177,203 +2186,227 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
         _category == 'Quick Picks' && !_videos && _search.text.trim().isEmpty
         ? _quickPicks
         : _songs;
-    return RefreshIndicator(
-      onRefresh: () => _load(refresh: true),
-      child: ListView(
-        key: const PageStorageKey('stream'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 28),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.stream_rounded,
-                  color: NexApp.violet,
-                  size: 30,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (scrollInfo) {
+        if (scrollInfo.metrics.axis == Axis.vertical) {
+          final metrics = scrollInfo.metrics;
+          // Auto load more when scrolling within 450 pixels of the bottom
+          if (metrics.maxScrollExtent > 0 &&
+              metrics.pixels >= metrics.maxScrollExtent - 450) {
+            if (!_loading &&
+                !_loadingMore &&
+                _hasMore &&
+                _category != 'Quick Picks') {
+              _load(more: true);
+            }
+          }
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () => _load(refresh: true),
+        child: ListView(
+          key: const PageStorageKey('stream'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 28),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.stream_rounded,
+                    color: NexApp.violet,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Stream',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          _videos
+                              ? 'Music videos from YouTube'
+                              : 'JioSaavn + YouTube Music, together',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Refresh streams',
+                    onPressed: () => _load(refresh: true),
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: TextField(
+                controller: _search,
+                onChanged: _onSearch,
+                decoration: InputDecoration(
+                  hintText: _videos
+                      ? 'Search YouTube videos'
+                      : 'Search both music providers',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _search.clear();
+                            _onSearch('');
+                          },
+                        ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    label: Text('Songs'),
+                    icon: Icon(Icons.music_note),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('Videos'),
+                    icon: Icon(Icons.smart_display_outlined),
+                  ),
+                ],
+                selected: {_videos},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _videos = selection.single;
+                    _category = 'Trending';
+                  });
+                  _load();
+                },
+              ),
+            ),
+            if (!_videos && _search.text.trim().isEmpty)
+              SizedBox(
+                height: 48,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _categories.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => ChoiceChip(
+                    label: Text(_categories[i]),
+                    selected: _category == _categories[i],
+                    onSelected: (_) {
+                      setState(() => _category = _categories[i]);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+            if (_unavailable.isNotEmpty && !_loading)
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  '${_unavailable.join(' and ')} unavailable. Pull down to retry.',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+              ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(48),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else ...[
+              if (showHome && _quickPicks.isNotEmpty) ...[
+                _heading('Quick Picks', 'Inspired by your listening'),
+                SizedBox(
+                  height: 218,
+                  child: GridView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisExtent: 290,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 4,
+                    ),
+                    itemCount: _quickPicks.length,
+                    itemBuilder: (_, i) =>
+                        _QuickPickTile(song: _quickPicks[i], queue: _quickPicks),
+                  ),
+                ),
+              ],
+              if (showHome && _similar.isNotEmpty)
+                _SpotifySection(
+                  title: 'Similar to $_similarTitle',
+                  subtitle: 'Recommendations across both providers',
+                  songs: _similar,
+                ),
+              _heading(
+                _search.text.trim().isNotEmpty
+                    ? 'Search results'
+                    : _videos
+                    ? 'Music videos'
+                    : _category == 'Trending'
+                    ? 'Made for your next listen'
+                    : _category,
+                _videos ? 'YouTube' : 'A mix from JioSaavn and YouTube Music',
+              ),
+              if (tracks.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(32),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Icon(Icons.search_off_rounded, size: 40),
+                      const SizedBox(height: 12),
                       const Text(
-                        'Stream',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        'No tracks available. Try another search or refresh.',
                       ),
-                      Text(
-                        _videos
-                            ? 'Music videos from YouTube'
-                            : 'JioSaavn + YouTube Music, together',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      TextButton(
+                        onPressed: () => _load(refresh: true),
+                        child: const Text('Retry'),
                       ),
                     ],
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Refresh streams',
-                  onPressed: () => _load(refresh: true),
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearch,
-              decoration: InputDecoration(
-                hintText: _videos
-                    ? 'Search YouTube videos'
-                    : 'Search both music providers',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _search.clear();
-                          _onSearch('');
-                        },
-                      ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: false,
-                  label: Text('Songs'),
-                  icon: Icon(Icons.music_note),
-                ),
-                ButtonSegment(
-                  value: true,
-                  label: Text('Videos'),
-                  icon: Icon(Icons.smart_display_outlined),
-                ),
-              ],
-              selected: {_videos},
-              onSelectionChanged: (selection) {
-                setState(() {
-                  _videos = selection.single;
-                  _category = 'Trending';
-                });
-                _load();
-              },
-            ),
-          ),
-          if (!_videos && _search.text.trim().isEmpty)
-            SizedBox(
-              height: 48,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                scrollDirection: Axis.horizontal,
-                itemCount: _categories.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => ChoiceChip(
-                  label: Text(_categories[i]),
-                  selected: _category == _categories[i],
-                  onSelected: (_) {
-                    setState(() => _category = _categories[i]);
-                    _load();
-                  },
-                ),
-              ),
-            ),
-          if (_unavailable.isNotEmpty && !_loading)
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                '${_unavailable.join(' and ')} unavailable. Pull down to retry.',
-                style: TextStyle(color: scheme.onSurfaceVariant),
-              ),
-            ),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(48),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else ...[
-            if (showHome && _quickPicks.isNotEmpty) ...[
-              _heading('Quick Picks', 'Inspired by your listening'),
-              SizedBox(
-                height: 218,
-                child: GridView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisExtent: 290,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 4,
+                )
+              else
+                for (final song in tracks) SongTile(song: song, queue: tracks),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
                   ),
-                  itemCount: _quickPicks.length,
-                  itemBuilder: (_, i) =>
-                      _QuickPickTile(song: _quickPicks[i], queue: _quickPicks),
+                )
+              else if (_hasMore && _category != 'Quick Picks')
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => _load(more: true),
+                    icon: const Icon(Icons.expand_more),
+                    label: const Text('Load more'),
+                  ),
                 ),
-              ),
             ],
-            if (showHome && _similar.isNotEmpty)
-              _SpotifySection(
-                title: 'Similar to $_similarTitle',
-                subtitle: 'Recommendations across both providers',
-                songs: _similar,
-              ),
-            _heading(
-              _search.text.trim().isNotEmpty
-                  ? 'Search results'
-                  : _videos
-                  ? 'Music videos'
-                  : _category == 'Trending'
-                  ? 'Made for your next listen'
-                  : _category,
-              _videos ? 'YouTube' : 'A mix from JioSaavn and YouTube Music',
-            ),
-            if (tracks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  children: [
-                    const Icon(Icons.search_off_rounded, size: 40),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No tracks available. Try another search or refresh.',
-                    ),
-                    TextButton(
-                      onPressed: () => _load(refresh: true),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            else
-              for (final song in tracks) SongTile(song: song, queue: tracks),
-            if (_loadingMore)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_hasMore && _category != 'Quick Picks')
-              Center(
-                child: TextButton.icon(
-                  onPressed: () => _load(more: true),
-                  icon: const Icon(Icons.expand_more),
-                  label: const Text('Load more'),
-                ),
-              ),
           ],
-        ],
+        ),
       ),
     );
   }
