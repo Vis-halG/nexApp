@@ -27,6 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
     private val channelName = "com.thenex.nexmusic/media_tools"
     private var phoneChannel: MethodChannel? = null
+    private var musicFeatures: MusicFeatures? = null
 
     /** Dart's pickMedia call, answered when the chooser closes. */
     private var pendingPick: MethodChannel.Result? = null
@@ -108,6 +109,9 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        musicFeatures = MusicFeatures(this)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.thenex.nexmusic/features")
+            .setMethodCallHandler { call, result -> musicFeatures!!.handle(call,result) }
         phoneChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.thenex.nexmusic/phone",
@@ -148,6 +152,11 @@ class MainActivity : AudioServiceActivity() {
                     }
                 }.start()
             }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        musicFeatures?.permissions(requestCode,grantResults)
     }
 
     /**

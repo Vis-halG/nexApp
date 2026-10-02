@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nex_app/music_controller.dart';
 import 'package:nex_app/music_data.dart';
+import 'package:nex_app/media_library.dart';
 import 'package:nex_app/phone_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -98,7 +99,10 @@ void main() {
 
     // Ids of songs that no longer exist are skipped instead of throwing.
     expect(controller.recentSongs.map((song) => song.id), ['s1']);
-    expect(controller.likedSongs.map((song) => song.id), ['s2']);
+    expect(controller.likedSongs, isEmpty);
+    expect(controller.librarySongs(MediaCollection.liked).map((s) => s.id), [
+      's2',
+    ]);
     expect(controller.songsIn('c1').map((song) => song.id), ['s1']);
     expect(controller.songsIn(null), hasLength(2));
     expect(controller.categoryName('x'), 'Uncategorized');
@@ -419,8 +423,8 @@ void main() {
       ];
     addTearDown(controller.dispose);
 
-    expect(controller.isSongDownloaded(controller.songs.first), isTrue);
-    expect(controller.downloadedSongs.map((song) => song.id), ['s1']);
+    expect(controller.isSongDownloaded(controller.songs.first), isFalse);
+    expect(controller.downloadedSongs, isEmpty);
     // A download whose file is gone falls back to streaming.
     expect(
       controller.playableUrl(controller.songs.first),

@@ -75,7 +75,7 @@ android {
         applicationId = "com.thenex.nex_music"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -130,4 +130,10 @@ configurations.configureEach {
     exclude(group = "androidx.media3", module = "media3-exoplayer-hls")
     exclude(group = "androidx.media3", module = "media3-exoplayer-rtsp")
     exclude(group = "androidx.media3", module = "media3-exoplayer-smoothstreaming")
+}
+
+dependencies {
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:language-id:17.0.6")
+    implementation("com.google.android.gms:play-services-cast-framework:22.1.0")
 }

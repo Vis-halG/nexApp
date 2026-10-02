@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'phone_services.dart';
 
 /// Fallback installed version of nexApp (matches pubspec.yaml).
-const String currentAppVersion = '0.3.3+8021';
+const String currentAppVersion = '0.4.0+8022';
 
 class AppUpdateInfo {
   const AppUpdateInfo({

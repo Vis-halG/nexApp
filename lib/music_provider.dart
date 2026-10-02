@@ -33,6 +33,7 @@ abstract class MusicProvider {
 /// an encrypted media address, so it is resolved only when playback/download
 /// starts. No account credentials or API keys are stored by this class.
 class JioSaavnProvider implements MusicProvider {
+  int quality = 320;
   JioSaavnProvider({ProviderJsonFetcher? fetchJson})
     : _fetchJson = fetchJson ?? _httpGetJson;
 
@@ -115,7 +116,14 @@ class JioSaavnProvider implements MusicProvider {
     }
     final decoded = decodeJioSaavnMediaUrl(encrypted);
     final hasHighQuality = _string(more?['320kbps']).toLowerCase() == 'true';
-    return _withQuality(decoded, hasHighQuality ? '320' : '160');
+    return _withQuality(
+      decoded,
+      quality <= 96
+          ? '96'
+          : quality <= 160 || !hasHighQuality
+          ? '160'
+          : '320',
+    );
   }
 
   @override
@@ -182,6 +190,12 @@ class JioSaavnProvider implements MusicProvider {
       providerId: id,
       sourceId: sourceId,
       artist: artistNames.join(', '),
+      album: decodeHtmlText(more?['album']),
+      albumId: _string(more?['album_id']),
+      artistId: primary is List && primary.isNotEmpty && primary.first is Map
+          ? _string((primary.first as Map)['id'])
+          : '',
+      language: _string(more?['language'] ?? item['language']),
       artworkUrl: _highResolutionArtwork(_string(item['image'])),
       durationMs: durationSeconds * 1000,
     );
@@ -235,6 +249,7 @@ class JioSaavnProvider implements MusicProvider {
 /// for playback. URLs are deliberately resolved at play time because YouTube
 /// signs them with an expiry timestamp.
 class YouTubeMusicProvider implements MusicProvider {
+  bool preferLowBitrate = false;
   YouTubeMusicProvider({ProviderJsonPoster? postJson})
     : _postJson = postJson ?? _httpPostJson;
 
@@ -404,7 +419,11 @@ class YouTubeMusicProvider implements MusicProvider {
         'This song does not belong to YouTube Music.',
       );
     }
-    return _resolveYouTubeMuxedStream(_postJson, song.sourceId);
+    return _resolveYouTubeMuxedStream(
+      _postJson,
+      song.sourceId,
+      lowBitrate: preferLowBitrate,
+    );
   }
 
   Song? _songFromRenderer(Map<String, dynamic> renderer) {
@@ -864,8 +883,9 @@ const _youtubeAndroidUserAgent =
 /// YouTube serves to anonymous clients, and needs no signature deciphering.
 Future<String> _resolveYouTubeMuxedStream(
   ProviderJsonPoster postJson,
-  String videoId,
-) async {
+  String videoId, {
+  bool lowBitrate = false,
+}) async {
   final data = await postJson(
     Uri.parse('https://www.youtube.com/youtubei/v1/player?prettyPrint=false'),
     {
@@ -927,7 +947,7 @@ Future<String> _resolveYouTubeMuxedStream(
   if (muxed.isEmpty) {
     throw const FormatException('No compatible stream is available.');
   }
-  return _string(muxed.first['url']);
+  return _string((lowBitrate ? muxed.last : muxed.first)['url']);
 }
 
 void _collectNamedMaps(

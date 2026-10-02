@@ -48,6 +48,7 @@ object NexPhone {
     }
 
     fun launchAction(intent: Intent?): String? = intent?.getStringExtra(ACTION_EXTRA)
+        ?: intent?.data?.takeIf { (it.scheme == "nexmusic" && it.host == "share") || (it.scheme == "https" && it.host == "nexmusic-push.vishalgupta25989.workers.dev" && it.path?.startsWith("/share/") == true) }?.let { "link:$it" }
 
     /** Opens nexApp and, when [action] is set, runs it (e.g. `play:<id>`). */
     fun openAppIntent(context: Context, action: String?, requestCode: Int): PendingIntent {
@@ -74,7 +75,7 @@ object NexPhone {
             "showActivity" -> notify(context, call, ACTIVITY_CHANNEL, ongoing = false)
             "cancel" -> manager(context).cancel(call.argument<Int>("id") ?: 0)
             "updateWidgets" -> {
-                // Home screen widgets removed
+                MusicWidget.save(context,call.argument<String>("data") ?: "{}")
             }
             "setSessionActive" -> sessionActive = call.argument<Boolean>("active") == true
             "releaseUri" -> releaseUri(context, call.argument<String>("uri"))

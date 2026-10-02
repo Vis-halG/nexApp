@@ -33,6 +33,8 @@ migrate_working_dir/
 /build/
 /coverage/
 /tool/small_apk/node_modules/
+/test_backend/node_modules/
+/.firebase/
 
 # Build artifacts kept outside /build/, like the APK shared for testing
 *.apk

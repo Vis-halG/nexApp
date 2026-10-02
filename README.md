@@ -4,7 +4,7 @@ Flutter app for shared music, online songs and videos.
 Signed-in listeners can upload songs and videos into shared categories. Files
 are stored on Cloudinary; Firebase handles login and the shared listing.
 
-Version `0.3.3+8021` has four tabs: Home, Stream, Library and Profile. Home
+Version `0.4.0+8022` has four tabs: Home, Stream, Library and Profile. Home
 groups songs and videos into recently played/watched, liked, most played and
 never played collections. Stream combines JioSaavn and YouTube Music with
 Quick Picks, song radio and a YouTube video filter. Movie discovery and its
@@ -53,9 +53,13 @@ the APK could upload to the account. The app itself only sends audio or video
 under 100 MB. Deleting a song in the app removes it from everyone's list; the
 file stays on Cloudinary until it is removed from the Media Library.
 
+## Music expansion
+
+Personal playlists, queue editing/restore, repeat modes, sleep timer, lyrics/translation, download manager, discovery controls, device music, listening stats, shared playlists/rooms, Cast/Auto hooks and long-form playback are included. See [feature setup and verified limitations](docs/music-expansion-setup.md) before enabling the cloud features. The new Worker and Firestore rules must be deployed to the existing backend. Song recognition/humming adapters require configured provider credentials.
+
 ## Features
 
-- Google login through Firebase Authentication. Nothing is visible signed out.
+- Google login through Firebase Authentication, plus guest access to device music and online discovery.
 - Shared catalogue: any signed-in user creates categories and uploads files up
   to 100 MB each.
   - Audio: mp3, m4a, aac, wav, flac, ogg, oga, opus, amr, 3ga, mka, aiff and
@@ -91,16 +95,7 @@ file stays on Cloudinary until it is removed from the Media Library.
   phones are notified when someone uploads, edits, moves or deletes a song or
   category (see "Activity notifications"). Profile → Activity notifications
   turns them off on one phone.
-- Home screen widgets:
-  - Music players, each a different design and size: Now playing (4×1),
-    Mini player (2×1), Square player (2×2), Big player (4×2, shows what plays
-    next), Tall player (2×3) and Play button (1×1).
-  - Clocks, each a different design and size: Big clock (4×2), Analog clock
-    (2×2), Clock and music (4×1, time beside the playing song), Stacked clock
-    (2×3) and Date pill (3×1). They keep time on their own and open the Clock
-    app when tapped.
-  - Quick actions (upload, search, browser, downloads).
-  - Latest uploads, Recently played and Liked songs.
+- Android home music widget: now playing, previous/play/next and three liked or recent shortcuts.
 - Any song or video can be downloaded from its ⋮ menu and then plays from the
   phone without internet (Profile → Downloads). A download is removed when
   its uploader deletes the song.

@@ -14,3 +14,4 @@
 # Size optimizations for R8
 -repackageclasses ''
 -allowaccessmodification
+-keep class com.thenex.nex_music.NexCastOptions { *; }

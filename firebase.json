@@ -1,1 +1,37 @@
-{"firestore":{"rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"nexmusic-25989","appId":"1:442750650318:android:a22d3eb19404f8bf61cd9f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"nexmusic-25989","configurations":{"android":"1:442750650318:android:a22d3eb19404f8bf61cd9f","ios":"1:442750650318:ios:442462b9ef60684661cd9f","web":"1:442750650318:web:51a662fe9c631b3e61cd9f"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "nexmusic-25989",
+          "appId": "1:442750650318:android:a22d3eb19404f8bf61cd9f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "nexmusic-25989",
+          "configurations": {
+            "android": "1:442750650318:android:a22d3eb19404f8bf61cd9f",
+            "ios": "1:442750650318:ios:442462b9ef60684661cd9f",
+            "web": "1:442750650318:web:51a662fe9c631b3e61cd9f"
+          }
+        }
+      }
+    }
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8086
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

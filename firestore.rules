@@ -109,6 +109,97 @@ service cloud.firestore {
         && request.resource.data.folderId is string;
     }
 
+    function validPlaylist(data) {
+      return data.keys().hasOnly(['id','ownerUid','name','cover','description','public','deleted','updatedAt','tracks','members','editors'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.cover is string && data.cover.size() <= 32
+        && data.description is string && data.description.size() <= 500
+        && data.public is bool && data.deleted is bool && data.updatedAt is int
+        && data.tracks is list && data.tracks.size() <= 300
+        && data.members is list && data.members.size() <= 50
+        && data.editors is list && data.members.hasAll(data.editors)
+        && data.ownerUid in data.members && data.ownerUid in data.editors;
+    }
+    function validJoin(playlistId) {
+      let data = request.resource.data;
+      let grant = getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/playlistJoins/$(playlistId)).data;
+      let invite = get(/databases/$(database)/documents/playlistInvites/$(grant.inviteId)).data;
+      return invite.playlistId == playlistId && invite.ownerUid == resource.data.ownerUid
+        && grant.createdAt == request.time && invite.expiresAt > request.time && !resource.data.deleted
+        && data.diff(resource.data).affectedKeys().hasOnly(['members','editors','updatedAt'])
+        && data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
+        && data.editors.toSet() == (invite.editor ? resource.data.editors.toSet().union([request.auth.uid].toSet()) : resource.data.editors.toSet());
+    }
+    match /playlists/{playlistId} {
+      allow read: if signedIn() && (resource.data.public || request.auth.uid in resource.data.members);
+      allow create: if signedIn() && validPlaylist(request.resource.data)
+        && request.resource.data.id == playlistId && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.members == [request.auth.uid] && request.resource.data.editors == [request.auth.uid];
+      allow update: if signedIn() && validPlaylist(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.id == resource.data.id
+        && (isOwner(resource.data.ownerUid)
+          || (request.auth.uid in resource.data.editors
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','cover','description','tracks','updatedAt']))
+          || validJoin(playlistId));
+      allow delete: if isOwner(resource.data.ownerUid);
+    }
+    match /playlistInvites/{inviteId} {
+      allow get: if signedIn() && resource.data.expiresAt > request.time;
+      allow list: if isOwner(resource.data.ownerUid);
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['playlistId','ownerUid','editor','expiresAt','createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && get(/databases/$(database)/documents/playlists/$(request.resource.data.playlistId)).data.ownerUid == request.auth.uid
+        && request.resource.data.editor is bool && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt > request.time && request.resource.data.expiresAt <= request.time + duration.value(8,'d');
+      allow delete: if isOwner(resource.data.ownerUid);
+    }
+    match /users/{userId}/playlistJoins/{playlistId} {
+      allow read,delete: if isOwner(userId);
+      allow create,update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['inviteId','createdAt'])
+        && request.resource.data.inviteId is string && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/playlistInvites/$(request.resource.data.inviteId)).data.playlistId == playlistId
+        && get(/databases/$(database)/documents/playlistInvites/$(request.resource.data.inviteId)).data.expiresAt > request.time;
+    }
+    match /users/{userId}/activity/{activityId} {
+      allow read,delete: if isOwner(userId);
+      allow create,update: if isOwner(userId) && request.resource.data.keys().hasOnly(['song','liked','likedAt','lastPlayed'])
+        && request.resource.data.song is map;
+    }
+    match /users/{userId}/listeningDays/{dayId} {
+      allow read,delete: if isOwner(userId);
+      allow create,update: if isOwner(userId) && request.resource.data.keys().hasOnly(['date','device','tracks','updatedAt'])
+        && request.resource.data.date is string && request.resource.data.tracks is map;
+    }
+    match /users/{userId}/preferences/{preferenceId} { allow read,write: if isOwner(userId) && preferenceId == 'listening'; }
+    function inRoom(roomId) { return signedIn() && request.auth.uid in get(/databases/$(database)/documents/listeningRooms/$(roomId)).data.members; }
+    match /listeningRooms/{roomId} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['name','hostUid','members','active','createdAt','playing','positionMs','current','updatedAt'])
+        && request.resource.data.hostUid == request.auth.uid && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.active == true && request.resource.data.createdAt == request.time;
+      allow update: if signedIn() && request.resource.data.hostUid == resource.data.hostUid
+        && request.resource.data.members is list && request.resource.data.members.size() <= 25
+        && request.resource.data.hostUid in request.resource.data.members
+        && (isOwner(resource.data.hostUid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','members','active','current','playing','positionMs','updatedAt'])
+          || (resource.data.active && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+            && (request.resource.data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
+              || request.resource.data.members.toSet() == resource.data.members.toSet().difference([request.auth.uid].toSet()))));
+      match /requests/{requestId} {
+        allow read: if inRoom(roomId);
+        allow create: if inRoom(roomId) && request.resource.data.keys().hasOnly(['song','requestedBy','votes','createdAt'])
+          && request.resource.data.requestedBy == request.auth.uid && request.resource.data.song is map
+          && request.resource.data.votes == {} && request.resource.data.createdAt == request.time;
+        allow update: if inRoom(roomId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
+          && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.votes[request.auth.uid] is bool;
+        allow delete: if signedIn() && (request.auth.uid == resource.data.requestedBy
+          || request.auth.uid == get(/databases/$(database)/documents/listeningRooms/$(roomId)).data.hostUid);
+      }
+      match /tastes/{userId} { allow read: if inRoom(roomId); allow write: if isOwner(userId) && inRoom(roomId) && request.resource.data.tracks is list && request.resource.data.tracks.size() <= 20; }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

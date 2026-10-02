@@ -19,6 +19,15 @@ let accessToken = { token: '', expiresAt: 0 };
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/capabilities') {
+      return reply({ recognition: Boolean(env.AUDD_API_TOKEN), humming: Boolean(env.HUMMING_ENDPOINT && env.HUMMING_API_TOKEN) });
+    }
+    if (request.method === 'GET' && url.pathname.startsWith('/share/')) return sharePage(url);
+    if (request.method === 'GET' && url.pathname === '/.well-known/assetlinks.json') {
+      const fingerprints = (env.APP_SHA256 || '').split(',').map(s => s.trim()).filter(s => /^[0-9A-Fa-f:]{95}$/.test(s));
+      return reply(fingerprints.length ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'com.thenex.nex_music', sha256_cert_fingerprints: fingerprints } }] : []);
+    }
     if (request.method !== 'POST') {
       return reply({ error: 'Use POST.' }, 405);
     }
@@ -37,6 +46,9 @@ export default {
     } catch {
       return reply({ error: 'Sign in to nexApp first.' }, 401);
     }
+
+    if (url.pathname === '/recognize') return recognize(request, env, account, senderUid, url.searchParams.get('mode') === 'humming');
+    if (url.pathname !== '/' && url.pathname !== '/notify') return reply({error:'Route not found.'},404);
 
     let input;
     try {
@@ -135,8 +147,8 @@ async function verifyIdToken(idToken, projectId) {
     payload.iss !== `https://securetoken.google.com/${projectId}` ||
     typeof payload.sub !== 'string' ||
     !payload.sub ||
-    payload.exp <= now ||
-    payload.iat > now + 300
+    !Number.isFinite(payload.exp) || payload.exp <= now ||
+    !Number.isFinite(payload.iat) || payload.iat > now + 300
   ) {
     throw new Error('Invalid token claims');
   }
@@ -235,4 +247,67 @@ function reply(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function sharePage(url) {
+  const match = /^\/share\/(track|room|playlist|invite)(?:\/([a-z0-9]{16,40}))?$/.exec(url.pathname);
+  if (!match || (match[1] !== 'track' && !match[2])) return reply({error:'Invalid music link.'},400);
+  let title = {room:'Join a music room',playlist:'Open a playlist',invite:'Join a shared playlist',track:'Open this song'}[match[1]];
+  if (match[1] === 'track') {
+    const encoded = url.searchParams.get('data') || '';
+    if (!encoded || encoded.length > 16000) return reply({error:'Invalid song link.'},400);
+    try { const song = JSON.parse(new TextDecoder().decode(fromBase64Url(encoded))); if (typeof song.title !== 'string' || song.title.length > 160 || !song.id || song.id.startsWith('local:') || song.id.startsWith('private:')) throw Error(); title = song.title; } catch { return reply({error:'Invalid song link.'},400); }
+  }
+  const deep = `nexmusic://share/${match[1]}${match[2] ? '/'+match[2] : ''}${url.search}`;
+  const intent = `intent://share/${match[1]}${match[2] ? '/'+match[2] : ''}${url.search}#Intent;scheme=nexmusic;package=com.thenex.nex_music;end`;
+  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} ? nexApp</title><style>body{font:18px system-ui;background:#171120;color:#fff;max-width:520px;margin:12vh auto;padding:24px}a{display:block;background:#7c3aed;color:#fff;padding:16px;border-radius:16px;margin:16px 0;text-align:center;text-decoration:none}</style><h1>${escapeHtml(title)}</h1><p>Listen together on nexApp.</p><a href="${escapeHtml(intent)}">Open nexApp on Android</a><a href="${escapeHtml(deep)}">Open in the app</a><p>If the app is not installed, install nexApp and open this link again.</p></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store'}});
+}
+async function recognize(request, env, account, uid, humming) {
+  if (humming ? !(env.HUMMING_ENDPOINT && env.HUMMING_API_TOKEN) : !env.AUDD_API_TOKEN) return reply({error:humming ? 'Humming recognition is not configured yet.' : 'Song recognition service is not configured yet.'},503);
+  const length = Number(request.headers.get('Content-Length'));
+  if (!Number.isFinite(length) || length < 44 || length > 2*1024*1024) return reply({error:'Send a WAV recording of up to 2 MB.'},413);
+  if (!(request.headers.get('Content-Type') || '').startsWith('audio/wav')) return reply({error:'A WAV recording is required.'},415);
+  const audio = await request.arrayBuffer();
+  if (audio.byteLength > 2*1024*1024 || new TextDecoder().decode(audio.slice(0,4)) !== 'RIFF' || new TextDecoder().decode(audio.slice(8,12)) !== 'WAVE') return reply({error:'Invalid WAV recording.'},400);
+  try {
+    const allowed = await reserveRecognition(account,uid);
+    if (!allowed) return reply({error:'Your daily recognition limit has been reached. Try again tomorrow.'},429);
+    let response;
+    if (humming) {
+      const endpoint = new URL(env.HUMMING_ENDPOINT);
+      if (endpoint.protocol !== 'https:') return reply({error:'Recognition configuration is invalid.'},503);
+      response = await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${env.HUMMING_API_TOKEN}`,'Content-Type':'audio/wav'},body:audio,signal:AbortSignal.timeout(30000)});
+    } else {
+      const form = new FormData(); form.set('api_token',env.AUDD_API_TOKEN); form.set('file',new Blob([audio],{type:'audio/wav'}),'sample.wav');
+      response = await fetch('https://api.audd.io/',{method:'POST',body:form,signal:AbortSignal.timeout(30000)});
+    }
+    if (!response.ok) return reply({error:'The recognition provider is unavailable. Try again later.'},502);
+    const data = await response.json();
+    if (!humming && data.status !== 'success') return reply({error:'The recognition provider could not process this sample.'},502);
+    const song = humming ? data : data.result;
+    if (!song) return reply({error:'No matching song found. Try again near the music.'},404);
+    return reply({title:text(song.title,160),artist:text(song.artist,160),album:text(song.album,160)});
+  } catch { return reply({error:'Recognition is unavailable. Try again later.'},502); }
+}
+async function reserveRecognition(account,uid) {
+  const token = await getAccessToken(account);
+  const day = new Date().toISOString().slice(0,10);
+  const base = `https://firestore.googleapis.com/v1/projects/${account.project_id}/databases/(default)/documents`;
+  const path = `/users/${encodeURIComponent(uid)}/recognitionUsage/${day}`;
+  for (let attempt=0;attempt<3;attempt++) {
+    const response = await fetch(base+path,{headers:{Authorization:`Bearer ${token}`}});
+    if (!response.ok && response.status !== 404) throw Error('Usage check failed');
+    const doc = response.ok ? await response.json() : null;
+    const count = Number(doc?.fields?.count?.integerValue || 0);
+    if (count >= 20) return false;
+    const write = {name:`projects/${account.project_id}/databases/(default)/documents${path}`,fields:{count:{integerValue:String(count+1)}}};
+    const commit = await fetch(base+':commit',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({writes:[{update:write,currentDocument:doc ? {updateTime:doc.updateTime} : {exists:false}}]})});
+    if (commit.ok) return true;
+    if (commit.status !== 409 && commit.status !== 412) throw Error('Usage reservation failed');
+  }
+  return false;
 }

@@ -86,6 +86,40 @@ void _usePhone(WidgetTester tester, Size size) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('video switch is offered only for matching YouTube sources', (
+    tester,
+  ) async {
+    final music = await _controller();
+    const audio = Song(
+      id: 'provider:jiosaavn:123',
+      title: 'Audio recording',
+      kind: 'audio',
+      url: '',
+      providerId: 'jiosaavn',
+      sourceId: '123',
+      artist: 'Singer',
+    );
+    music.playback.queue.replace([audio], audio);
+    music.current = audio;
+    await tester.pumpWidget(_app(music, home: const NowPlayingScreen()));
+    expect(find.text('Video'), findsNothing);
+    expect(find.text('Watch Music Video'), findsNothing);
+    final video = audio.copyWith(
+      id: 'provider:ytmusic:abcdefghijk',
+      providerId: 'ytmusic',
+      sourceId: 'abcdefghijk',
+    );
+    music.playback.queue.replace([video], video);
+    music.current = video;
+    music.notifyListeners();
+    await tester.pump();
+    expect(find.text('Video'), findsOneWidget);
+    expect(find.text('Watch Music Video'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    music.dispose();
+    await tester.pump();
+  });
+
   testWidgets('shows the sign-in screen when signed out', (tester) async {
     final controller = await _controller();
 
@@ -189,6 +223,10 @@ void main() {
       ..current = _songs.first
       ..queue = [_songs.first, _songs.last]
       ..duration = const Duration(minutes: 3, seconds: 20);
+    controller.playback.queue.replace([
+      _songs.first,
+      _songs.last,
+    ], _songs.first);
 
     await tester.pumpWidget(_app(controller, home: const NowPlayingScreen()));
     await tester.pumpAndSettle();

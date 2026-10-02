@@ -43,11 +43,11 @@ class LibraryMedia {
 /// Local activity stores metadata as well as IDs, so online likes survive a
 /// restart even when their tracks are absent from the current discovery feed.
 class MediaLibrary extends ChangeNotifier {
-  MediaLibrary(this._prefs) {
-    _legacyLikes.addAll(_prefs.getStringList('likedSongIds') ?? []);
-    _legacyRecent.addAll(_prefs.getStringList('recentSongIds') ?? []);
+  MediaLibrary(this._prefs, {this.namespace = ''}) {
+    _legacyLikes.addAll(_prefs.getStringList(key('likedSongIds')) ?? []);
+    _legacyRecent.addAll(_prefs.getStringList(key('recentSongIds')) ?? []);
     for (final raw
-        in _prefs.getStringList('recent_stream_history') ?? <String>[]) {
+        in _prefs.getStringList(key('recent_stream_history')) ?? <String>[]) {
       try {
         final song = Song.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         if (song != null) {
@@ -59,7 +59,7 @@ class MediaLibrary extends ChangeNotifier {
       }
     }
     try {
-      final rows = jsonDecode(_prefs.getString(_storageKey) ?? '[]');
+      final rows = jsonDecode(_prefs.getString(key(_storageKey)) ?? '[]');
       if (rows is List) {
         for (final raw in rows.whereType<Map>()) {
           try {
@@ -90,6 +90,9 @@ class MediaLibrary extends ChangeNotifier {
   }
 
   static const _storageKey = 'media_library_v1';
+  final String namespace;
+  String key(String name) => namespace.isEmpty ? name : '$namespace:$name';
+  List<LibraryMedia> get entries => List.unmodifiable(_items.values);
   final SharedPreferences _prefs;
   final _items = <String, LibraryMedia>{};
   final _legacyLikes = <String>{}, _legacyRecent = <String>{};
@@ -129,7 +132,7 @@ class MediaLibrary extends ChangeNotifier {
             MediaCollection.recent => item.wasPlayed,
             MediaCollection.watched => item.wasPlayed && item.isVideo,
             MediaCollection.liked => item.liked,
-            MediaCollection.likedSongs => item.liked,
+            MediaCollection.likedSongs => item.liked && !item.isVideo,
             MediaCollection.mostPlayed => item.plays > 0,
             MediaCollection.neverPlayed => !item.wasPlayed,
           },
@@ -165,6 +168,29 @@ class MediaLibrary extends ChangeNotifier {
     _record(_items['song:${song.id}']!);
   }
 
+  void applyCloudLike(Song song, bool liked) {
+    if (song.isPrivate) return;
+    rememberSongs([song]);
+    _items['song:${song.id}']!.liked = liked;
+    if (liked) {
+      _legacyLikes.add(song.id);
+    } else {
+      _legacyLikes.remove(song.id);
+    }
+    _changed();
+  }
+
+  void applyCloudPlay(Song song, int lastPlayed) {
+    if (song.isPrivate || lastPlayed <= 0) return;
+    rememberSongs([song]);
+    final item = _items['song:${song.id}']!;
+    if (lastPlayed > item.lastPlayed) {
+      item.lastPlayed = lastPlayed;
+      item.playedBefore = true;
+      _changed();
+    }
+  }
+
   void _record(LibraryMedia item) {
     item.plays++;
     item.lastPlayed = DateTime.now().millisecondsSinceEpoch;
@@ -186,7 +212,7 @@ class MediaLibrary extends ChangeNotifier {
           .toList(),
     );
     _saved = _saved.catchError((Object _) {}).then((_) async {
-      await _prefs.setString(_storageKey, json);
+      await _prefs.setString(key(_storageKey), json);
     });
     unawaited(
       _saved.catchError((Object error) {

@@ -75,15 +75,30 @@ Activity categoryDeleteActivity(String name, {int songs = 0}) => (
 /// and keeps music playing while nexApp is in the background.
 class NexAudioHandler extends BaseAudioHandler with SeekHandler {
   NexAudioHandler(this.player) {
-    player.playbackEventStream.listen(
-      (_) => _broadcast(),
-      onError: (Object _, StackTrace _) {},
+    bindPlayer(player);
+  }
+  final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
+  void bindPlayer(AudioPlayer value) {
+    for (final subscription in _playerSubscriptions) {
+      unawaited(subscription.cancel());
+    }
+    _playerSubscriptions.clear();
+    player = value;
+    _playerSubscriptions.add(
+      player.playbackEventStream.listen(
+        (_) => _broadcast(),
+        onError: (Object _, StackTrace _) {},
+      ),
     );
-    player.playingStream.listen((_) => _broadcast());
+    _playerSubscriptions.add(player.playingStream.listen((_) => _broadcast()));
     _broadcast();
   }
 
-  final AudioPlayer player;
+  AudioPlayer player;
+  Future<void> Function()? onPlay, onPause, onStop;
+  Future<void> Function(Duration)? onSeek;
+  Future<void> Function(String)? onPlayMediaId;
+  Future<List<MediaItem>> Function(String)? onBrowse;
 
   /// Set by the controller so the notification buttons follow the app queue.
   Future<void> Function()? onNext, onPrevious;
@@ -108,7 +123,9 @@ class NexAudioHandler extends BaseAudioHandler with SeekHandler {
           ProcessingState.idle => AudioProcessingState.idle,
           ProcessingState.loading => AudioProcessingState.loading,
           ProcessingState.buffering =>
-            playing ? AudioProcessingState.ready : AudioProcessingState.buffering,
+            playing
+                ? AudioProcessingState.ready
+                : AudioProcessingState.buffering,
           ProcessingState.ready => AudioProcessingState.ready,
           ProcessingState.completed => AudioProcessingState.completed,
         },
@@ -122,22 +139,35 @@ class NexAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
-    await player.play();
+    if (onPlay != null) {
+      await onPlay!();
+    } else {
+      unawaited(player.play());
+    }
     _broadcast();
   }
 
   @override
   Future<void> pause() async {
-    await player.pause();
+    if (onPause != null) {
+      await onPause!();
+    } else {
+      await player.pause();
+    }
     _broadcast();
   }
 
   @override
-  Future<void> seek(Duration position) => player.seek(position);
+  Future<void> seek(Duration position) =>
+      onSeek?.call(position) ?? player.seek(position);
 
   @override
   Future<void> stop() async {
-    await player.stop();
+    if (onStop != null) {
+      await onStop!();
+    } else {
+      await player.stop();
+    }
     await super.stop();
     _broadcast();
   }
@@ -147,6 +177,21 @@ class NexAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async => onPrevious?.call();
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) async => onPlayMediaId?.call(mediaId);
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) async =>
+      onBrowse?.call(
+        parentMediaId == AudioService.browsableRootId ? 'root' : parentMediaId,
+      ) ??
+      [];
 }
 
 /// Home screen widgets, upload and download progress notifications, and
@@ -230,14 +275,16 @@ class PhoneServices {
 
   /// Returns the installed application version from Android's PackageManager.
   Future<({String versionName, int buildNumber, String version})?>
-      getAppVersion() async {
+  getAppVersion() async {
     try {
-      final res = await _channel.invokeMapMethod<String, dynamic>('getAppVersion');
+      final res = await _channel.invokeMapMethod<String, dynamic>(
+        'getAppVersion',
+      );
       if (res != null) {
         final name = (res['versionName'] as String?) ?? '';
         final build = (res['buildNumber'] as num?)?.toInt() ?? 0;
-        final ver = (res['version'] as String?) ??
-            (build > 0 ? '$name+$build' : name);
+        final ver =
+            (res['version'] as String?) ?? (build > 0 ? '$name+$build' : name);
         return (versionName: name, buildNumber: build, version: ver);
       }
     } catch (e) {
@@ -318,10 +365,7 @@ class PhoneServices {
         final notification = message.notification;
         if (notification == null) return;
         unawaited(
-          showActivity(
-            notification.title ?? 'nexApp',
-            notification.body ?? '',
-          ),
+          showActivity(notification.title ?? 'nexApp', notification.body ?? ''),
         );
       });
     } catch (error) {

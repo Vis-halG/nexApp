@@ -16,6 +16,7 @@ import 'firebase_options.dart';
 import 'music_controller.dart';
 import 'music_ui.dart';
 import 'phone_services.dart';
+import 'personal_music.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,10 @@ Future<void> main() async {
     );
   }
   final preferences = await SharedPreferences.getInstance();
+  final existingUser = FirebaseAuth.instance.currentUser;
+  if (existingUser != null) {
+    await migrateMusicAccount(preferences, existingUser.uid);
+  }
   final player = AudioPlayer();
   NexAudioHandler? audioHandler;
   if (!kIsWeb) {
@@ -288,7 +293,10 @@ class NexApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = context
         .select<MusicController, ({bool dark, bool signedIn})>(
-          (music) => (dark: music.darkMode, signedIn: music.signedIn),
+          (music) => (
+            dark: music.darkMode,
+            signedIn: music.signedIn || music.guestMode,
+          ),
         );
     return MaterialApp(
       title: 'nexApp',

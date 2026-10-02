@@ -7,6 +7,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -19,6 +21,26 @@ import 'media_library.dart';
 import 'music_controller.dart';
 import 'music_data.dart';
 import 'music_discovery.dart';
+import 'listening_models.dart';
+import 'music_downloads.dart';
+import 'music_lyrics.dart';
+import 'music_device.dart';
+import 'music_longform.dart';
+import 'music_portability.dart';
+import 'music_catalog.dart';
+import 'music_social.dart';
+import 'phone_services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+
+part 'listening_ui.dart';
+part 'discovery_ui.dart';
+part 'social_ui.dart';
+part 'recognition_ui.dart';
+part 'device_ui.dart';
+part 'portability_ui.dart';
+part 'previews_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -90,23 +112,32 @@ Future<void> _openSong(
 
 Future<void> _openSongVideo(BuildContext context, Song song) async {
   final music = context.read<MusicController>();
+  final account = music.personal;
+  final matching = music.current?.id == song.id;
+  final resume = matching && music.playing;
+  var exitPosition = matching ? music.position : Duration.zero;
   try {
     await music.pauseAudio();
     final videoSong = song.copyWith(kind: 'video');
     final url = await music.resolvedPlayableUrl(videoSong);
     if (!context.mounted) return;
-    _push(
-      context,
-      VideoScreen(
-        song: videoSong.copyWith(url: url),
-        httpHeaders: const {
-          'User-Agent':
-              'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
-        },
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => VideoScreen(
+          song: videoSong.copyWith(url: url),
+          httpHeaders: music.playbackHeadersFor(videoSong),
+          initialPosition: exitPosition,
+          onClosed: (position) => exitPosition = position,
+        ),
       ),
     );
+    if (account == music.personal && matching && music.current?.id == song.id) {
+      await music.play(song, initialPosition: exitPosition);
+      if (!resume) await music.pauseAudio();
+    }
   } catch (_) {
     music.announce('Could not load video for this track.');
+    if (resume && account == music.personal) await music.playback.resume();
   }
 }
 
@@ -130,25 +161,27 @@ Future<void> _sheet(
     builder: (sheetContext) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ...children(sheetContext),
-          ],
+              ...children(sheetContext),
+            ],
+          ),
         ),
       ),
     ),
@@ -902,6 +935,10 @@ class WelcomeScreen extends StatelessWidget {
                         ],
                       ),
               ),
+              TextButton(
+                onPressed: music.enterGuestMode,
+                child: const Text('Continue on this device'),
+              ),
             ],
           ),
         ),
@@ -1102,6 +1139,22 @@ class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
   void _runLaunchAction(String action, [int attempt = 0]) {
     if (!mounted) return;
     final music = context.read<MusicController>();
+    if (action.startsWith('link:')) {
+      _openMusicLink(context, action.substring(5));
+      return;
+    }
+    if (action == 'toggle') {
+      music.togglePlay();
+      return;
+    }
+    if (action == 'next') {
+      music.next();
+      return;
+    }
+    if (action == 'previous') {
+      music.previous();
+      return;
+    }
     if (action.startsWith('play:')) {
       final song = music.songById(action.substring('play:'.length));
       if (song != null) {
@@ -2114,7 +2167,10 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
       : '$_category songs';
 
   Future<void> _load({bool more = false, bool refresh = false}) async {
-    if (more && (_loading || _loadingMore || !_hasMore || _category == 'Quick Picks')) return;
+    if (more &&
+        (_loading || _loadingMore || !_hasMore || _category == 'Quick Picks')) {
+      return;
+    }
     _debounce?.cancel();
     final request = ++_request;
     final music = context.read<MusicController>();
@@ -2145,7 +2201,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
           [..._songs, ...result.songs],
         ]);
         _hasMore = result.songs.isNotEmpty && combined.length > _songs.length;
-        _songs = combined;
+        _songs = combined.where(music.personal.accepts).toList();
         _unavailable = result.unavailable;
         _page = page;
         _loading = false;
@@ -2213,6 +2269,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 28),
           children: [
+            const DiscoveryTools(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
               child: Row(
@@ -2341,15 +2398,18 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                   child: GridView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisExtent: 290,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 4,
-                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisExtent: 290,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 4,
+                        ),
                     itemCount: _quickPicks.length,
-                    itemBuilder: (_, i) =>
-                        _QuickPickTile(song: _quickPicks[i], queue: _quickPicks),
+                    itemBuilder: (_, i) => _QuickPickTile(
+                      song: _quickPicks[i],
+                      queue: _quickPicks,
+                    ),
                   ),
                 ),
               ],
@@ -2572,7 +2632,7 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
 
     final searchResults = query.isEmpty
         ? const <Song>[]
-        : music.songs.where((s) {
+        : music.allMusic.where((s) {
             return s.title.toLowerCase().contains(query) ||
                 s.artist.toLowerCase().contains(query) ||
                 music.categoryName(s.categoryId).toLowerCase().contains(query);
@@ -2591,10 +2651,7 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
               if (val.trim().isNotEmpty && music.musicProviders.isNotEmpty) {
                 _debounce = Timer(
                   const Duration(milliseconds: 500),
-                  () => music.searchProvider(
-                    val,
-                    providerId: music.musicProviders.first.id,
-                  ),
+                  () => music.searchAllMusic(val),
                 );
               }
             },
@@ -2606,6 +2663,8 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
                       icon: const Icon(Icons.clear_rounded),
                       onPressed: () {
                         _searchController.clear();
+                        _debounce?.cancel();
+                        music.searchAllMusic('');
                         setState(() {});
                       },
                     )
@@ -2788,6 +2847,7 @@ class _SpotifyLibraryView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 80),
       children: [
+        const PersonalLibraryPanel(),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
           child: Row(
@@ -3058,6 +3118,7 @@ Future<void> _songActions(BuildContext context, Song song) {
     context,
     title: song.title,
     (sheetContext) => [
+      ..._listeningSongActions(context, sheetContext, song),
       ListTile(
         leading: const Icon(Icons.radio_rounded, color: NexApp.violet),
         title: const Text('Start Radio'),
@@ -3572,7 +3633,7 @@ class _UploadScreenState extends State<UploadScreen> {
     final count = _picked.length;
     final totalBytes = _picked.fold<int>(
       0,
-      (sum, item) => sum + item.sizeBytes,
+      (total, item) => total + item.sizeBytes,
     );
     final job = _job;
     // The shared link is still being turned into audio.
@@ -4578,8 +4639,7 @@ class MiniPlayer extends StatelessWidget {
                               : scheme.onSurfaceVariant,
                         ),
                       ),
-                    if (song.providerId == 'ytmusic' ||
-                        song.sourceId.isNotEmpty)
+                    if (song.providerId.startsWith('yt'))
                       IconButton(
                         tooltip: 'Watch Video',
                         iconSize: 22,
@@ -4662,9 +4722,7 @@ class NowPlayingScreen extends StatelessWidget {
             repeat: music.repeat,
             liked: song != null && music.isLiked(song),
             duration: music.duration,
-            category: song == null || song.isPrivate
-                ? 'Private library'
-                : music.categoryName(song.categoryId),
+            category: song == null ? 'Music' : music.songSource(song),
           );
         });
     final music = context.read<MusicController>();
@@ -4684,8 +4742,36 @@ class NowPlayingScreen extends StatelessWidget {
           style: TextStyle(fontSize: 14, color: muted),
         ),
         actions: [
-          if (song != null &&
-              (song.providerId == 'ytmusic' || song.sourceId.isNotEmpty))
+          IconButton(
+            tooltip: 'Play queue',
+            icon: const Icon(Icons.queue_music),
+            onPressed: () => _push(context, const MusicQueueScreen()),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Listening tools',
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'lyrics', child: Text('Lyrics')),
+              PopupMenuItem(value: 'karaoke', child: Text('Sing along')),
+              PopupMenuItem(value: 'sleep', child: Text('Sleep timer')),
+              PopupMenuItem(value: 'sound', child: Text('Sound settings')),
+              PopupMenuItem(value: 'cast', child: Text('Cast to a device')),
+            ],
+            onSelected: (v) {
+              if (v == 'sleep') {
+                _sleepTimerSheet(context);
+              } else if (v == 'sound') {
+                _push(context, const ListeningSettingsScreen());
+              } else if (v == 'cast') {
+                _castSong(context, song);
+              } else if (song != null) {
+                _push(
+                  context,
+                  MusicLyricsScreen(song: song, karaoke: v == 'karaoke'),
+                );
+              }
+            },
+          ),
+          if (song != null && song.providerId.startsWith('yt'))
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: TextButton.icon(
@@ -4736,8 +4822,7 @@ class NowPlayingScreen extends StatelessWidget {
                             size: art,
                             imageUrl: song.artworkUrl,
                           ),
-                          if (song.providerId == 'ytmusic' ||
-                              song.sourceId.isNotEmpty) ...[
+                          if (song.providerId.startsWith('yt')) ...[
                             const SizedBox(height: 16),
                             FilledButton.tonalIcon(
                               onPressed: () => _openSongVideo(context, song),
@@ -4910,7 +4995,7 @@ class NowPlayingScreen extends StatelessWidget {
                                 tooltip: 'Repeat',
                                 onPressed: music.toggleRepeat,
                                 icon: Icon(
-                                  state.repeat
+                                  music.playback.queue.repeat == MusicRepeat.one
                                       ? Icons.repeat_one_rounded
                                       : Icons.repeat_rounded,
                                   color: state.repeat ? NexApp.violet : muted,
@@ -4934,9 +5019,13 @@ class VideoScreen extends StatefulWidget {
     super.key,
     required this.song,
     this.httpHeaders = const {},
+    this.initialPosition = Duration.zero,
+    this.onClosed,
   });
   final Song song;
   final Map<String, String> httpHeaders;
+  final Duration initialPosition;
+  final void Function(Duration)? onClosed;
 
   @override
   State<VideoScreen> createState() => _VideoScreenState();
@@ -4966,6 +5055,9 @@ class _VideoScreenState extends State<VideoScreen> {
   Future<void> _start() async {
     try {
       await _video.initialize();
+      if (widget.initialPosition > Duration.zero) {
+        await _video.seekTo(widget.initialPosition);
+      }
       await _video.play();
       if (mounted) context.read<MusicController>().recordVideoPlay(widget.song);
     } catch (_) {
@@ -4981,6 +5073,7 @@ class _VideoScreenState extends State<VideoScreen> {
 
   @override
   void dispose() {
+    widget.onClosed?.call(_video.value.position);
     _video.removeListener(_refresh);
     _video.dispose();
     super.dispose();
@@ -4995,6 +5088,14 @@ class _VideoScreenState extends State<VideoScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          if (widget.onClosed != null)
+            IconButton(
+              tooltip: 'Switch to audio',
+              icon: const Icon(Icons.headphones),
+              onPressed: () => Navigator.pop(context),
+            ),
+        ],
         title: Text(
           widget.song.title,
           maxLines: 1,
@@ -5103,6 +5204,16 @@ class ProfileScreen extends StatelessWidget {
     final content = ListView(
       padding: EdgeInsets.only(top: showAppBar ? 0 : 16, bottom: 32),
       children: [
+        _NavRow(
+          icon: Icons.tune,
+          title: 'Listening settings',
+          onTap: () => _push(context, const ListeningSettingsScreen()),
+        ),
+        _NavRow(
+          icon: Icons.insights,
+          title: 'Your listening week',
+          onTap: () => _push(context, const ListeningStatsScreen()),
+        ),
         if (!showAppBar)
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 10, 20, 12),
@@ -5491,6 +5602,18 @@ Future<void> _privateActions(BuildContext context, SavedMedia item) {
     context,
     title: item.title,
     (sheetContext) => [
+      if (item.kind != 'link')
+        ListTile(
+          leading: const Icon(Icons.playlist_add),
+          title: const Text('Add to personal playlist'),
+          onTap: () async {
+            Navigator.pop(sheetContext);
+            final track = await music.privateSong(item);
+            if (track != null && context.mounted) {
+              await _choosePlaylist(context, track);
+            }
+          },
+        ),
       ListTile(
         leading: const Icon(Icons.edit_outlined),
         title: const Text('Edit or move'),

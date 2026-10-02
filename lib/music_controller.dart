@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as path;
@@ -20,6 +21,16 @@ import 'music_data.dart';
 import 'music_discovery.dart';
 import 'music_provider.dart';
 import 'phone_services.dart';
+import 'listening_models.dart';
+import 'personal_music.dart';
+import 'music_catalog.dart';
+import 'music_social.dart';
+import 'listening_player.dart';
+import 'music_downloads.dart';
+import 'music_lyrics.dart';
+import 'music_device.dart';
+
+part 'listening_controller.dart';
 
 /// File types accepted for public uploads: the audio and video formats
 /// Cloudinary stores. Phones play most of them directly; the rest are
@@ -340,7 +351,7 @@ class MusicController extends ChangeNotifier {
       throw ArgumentError.value(_musicProviders, 'musicProviders');
     }
     activeProviderId = _musicProviders.first.id;
-    library = MediaLibrary(_prefs)..addListener(notifyListeners);
+    _initPersonal(_auth?.currentUser?.uid ?? 'guest');
     signedIn = _auth?.currentUser != null;
     pushEnabled = _prefs.getBool('pushEnabled') ?? true;
     // Lock screen and notification buttons follow the app's own queue.
@@ -352,31 +363,38 @@ class MusicController extends ChangeNotifier {
     darkMode = _prefs.getBool('darkMode') ?? false;
     browserPillOne = _prefs.getString('browserPillOne');
     browserPillTwo = _prefs.getString('browserPillTwo');
-    liked.addAll(_prefs.getStringList('likedSongIds') ?? const []);
-    recentSongIds.addAll(_prefs.getStringList('recentSongIds') ?? const []);
+    liked.addAll(_prefs.getStringList(_accountKey('likedSongIds')) ?? const []);
+    recentSongIds.addAll(
+      _prefs.getStringList(_accountKey('recentSongIds')) ?? const [],
+    );
     try {
-      final saved = jsonDecode(_prefs.getString('offlineMedia') ?? '{}');
+      final saved = jsonDecode(
+        _prefs.getString(_accountKey('offlineMedia')) ?? '{}',
+      );
       if (saved is Map) {
         offlinePaths.addAll(
           saved.map((key, value) => MapEntry('$key', '$value')),
         );
       }
     } catch (_) {
-      _prefs.remove('offlineMedia');
+      _prefs.remove(_accountKey('offlineMedia'));
     }
     try {
-      final saved = jsonDecode(_prefs.getString('offlineSongs') ?? '{}');
+      final saved = jsonDecode(
+        _prefs.getString(_accountKey('offlineSongs')) ?? '{}',
+      );
       if (saved is Map) {
         offlineSongs.addAll(
           saved.map((key, value) => MapEntry('$key', '$value')),
         );
       }
     } catch (_) {
-      _prefs.remove('offlineSongs');
+      _prefs.remove(_accountKey('offlineSongs'));
     }
     try {
       final streamList =
-          _prefs.getStringList('recent_stream_history') ?? const [];
+          _prefs.getStringList(_accountKey('recent_stream_history')) ??
+          const [];
       for (final str in streamList) {
         final decoded = jsonDecode(str);
         if (decoded is Map<String, dynamic>) {
@@ -385,48 +403,26 @@ class MusicController extends ChangeNotifier {
         }
       }
     } catch (_) {
-      _prefs.remove('recent_stream_history');
+      _prefs.remove(_accountKey('recent_stream_history'));
     }
-    _subs.add(
-      _audio.playerStateStream.listen((state) {
-        playing = state.playing;
-        loading =
-            state.processingState == ProcessingState.loading ||
-            state.processingState == ProcessingState.buffering;
-        notifyListeners();
-        if (state.processingState == ProcessingState.completed) next();
-      }),
-    );
-    _subs.add(
-      _audio.positionStream.listen((value) {
-        position = value;
-        // Playback position is a high-frequency signal. Player widgets listen
-        // to this narrow channel instead of the controller's global notifier.
-        positionListenable.value = value;
-      }),
-    );
-    _subs.add(
-      _audio.durationStream.listen((value) {
-        final song = current;
-        if (value != null) {
-          duration = value;
-          if (song != null) {
-            _audioHandler?.mediaItem.add(_mediaItem(song, duration: value));
-          }
-        }
-        notifyListeners();
-      }),
-    );
+    _initPlayback();
     if (_auth != null) {
       _subs.add(
         _auth.authStateChanges().listen((user) {
           signedIn = user != null;
           if (user != null) {
-            unawaited(_startCatalog());
-            unawaited(loadCloudLibrary());
+            guestMode = false;
+            unawaited(
+              _switchAccount(user.uid).then((_) async {
+                if (_auth.currentUser?.uid != user.uid) return;
+                await _startCatalog();
+                await loadCloudLibrary();
+              }),
+            );
             if (pushEnabled) unawaited(phone?.enablePush());
           } else {
             _stopCatalog();
+            unawaited(_switchAccount('guest'));
           }
           notifyListeners();
         }),
@@ -439,7 +435,17 @@ class MusicController extends ChangeNotifier {
   SharedPreferences get preferences => _prefs;
 
   /// Device-local history and likes shared by music and video sources.
-  late final MediaLibrary library;
+  late MediaLibrary library;
+  late PersonalMusic personal;
+  final MusicCatalog catalog = MusicCatalog();
+  MusicSocial? social;
+  late MusicDownloads downloads;
+  late ListeningPlayer playback;
+  late final MusicLyricsService lyricsService = MusicLyricsService(_prefs);
+  Future<void> _accountSwitch = Future.value();
+  String _accountUid = 'guest';
+  int _accountGeneration = 0;
+  bool guestMode = false;
 
   String _installedVersion = currentAppVersion;
   String get installedVersion => _installedVersion;
@@ -456,14 +462,13 @@ class MusicController extends ChangeNotifier {
   final FirebaseAuth? _auth;
   final FirebaseFirestore? _firestore;
   final FirebaseStorage? _storage;
-  final AudioPlayer _audio;
+  AudioPlayer _audio;
   final NexAudioHandler? _audioHandler;
   final List<MusicProvider> _musicProviders;
   late final MusicDiscovery discovery = MusicDiscovery(_musicProviders);
 
   /// Widgets, notifications and push on Android; null in tests.
   final PhoneServices? phone;
-  final math.Random _random = math.Random();
   final List<StreamSubscription<dynamic>> _subs = [];
   final List<StreamSubscription<dynamic>> _catalogSubs = [];
   final ValueNotifier<Duration> positionListenable = ValueNotifier(
@@ -482,13 +487,13 @@ class MusicController extends ChangeNotifier {
       _recentStreamSongs.removeRange(25, _recentStreamSongs.length);
     }
     final raw = _recentStreamSongs.map((s) => jsonEncode(s.toJson())).toList();
-    unawaited(_prefs.setStringList('recent_stream_history', raw));
+    unawaited(_prefs.setStringList(_accountKey('recent_stream_history'), raw));
   }
 
-  final Map<String, String> offlinePaths = {};
+  Map<String, String> offlinePaths = {};
 
   /// Public songs saved on this device for offline listening, by song id.
-  final Map<String, String> offlineSongs = {};
+  Map<String, String> offlineSongs = {};
 
   /// Progress (0–1) of song downloads that are still running, by song id.
   final Map<String, double> songDownloads = {};
@@ -595,8 +600,7 @@ class MusicController extends ChangeNotifier {
   }
 
   List<Song> get likedSongs => librarySongs(MediaCollection.likedSongs);
-  List<Song> get recentSongs =>
-      recentSongIds.map(songById).whereType<Song>().toList();
+  List<Song> get recentSongs => librarySongs(MediaCollection.recent);
   List<Song> get myUploads {
     final userId = uid;
     if (userId == null) return const [];
@@ -607,7 +611,17 @@ class MusicController extends ChangeNotifier {
     for (final song in songs) {
       if (song.id == id) return song;
     }
-    return null;
+    return personal.offlineTracks[id] ??
+        personal.localTracks[id] ??
+        personal.longformTracks[id] ??
+        library.entries
+            .where((e) => e.song.id == id)
+            .map((e) => e.song)
+            .firstOrNull ??
+        personal.playlists
+            .expand((p) => p.tracks)
+            .where((s) => s.id == id)
+            .firstOrNull;
   }
 
   MusicCategory? categoryById(String id) {
@@ -655,6 +669,11 @@ class MusicController extends ChangeNotifier {
   String get providerName => providerNameFor(activeProviderId);
 
   String songSource(Song song) {
+    if (song.isPrivate) return 'Private library';
+    if (song.isLocal) return 'On this device';
+    if (song.isLongform) {
+      return song.contentType == 'podcast' ? 'Podcast' : 'Audiobook';
+    }
     if (!song.isProvider) return categoryName(song.categoryId);
     return [
       song.artist,
@@ -786,8 +805,26 @@ class MusicController extends ChangeNotifier {
       uid != null && category.ownerUid == uid;
   bool isLiked(Song song) => liked.contains(song.id);
   bool isDownloaded(SavedMedia item) => offlinePaths.containsKey(item.id);
-  bool isSongDownloaded(Song song) => offlineSongs.containsKey(song.id);
-  List<Song> get downloadedSongs => songs.where(isSongDownloaded).toList();
+  bool isSongDownloaded(Song song) =>
+      offlineSongs[song.id] != null &&
+      File(offlineSongs[song.id]!).existsSync();
+  List<Song> get downloadedSongs {
+    final found = <String, Song>{
+      for (final s in [
+        ...songs,
+        ...personal.offlineTracks.values,
+        ...library.entries.map((e) => e.song),
+      ])
+        s.id: s,
+    };
+    return found.values
+        .where(
+          (s) =>
+              offlineSongs.containsKey(s.id) &&
+              File(offlineSongs[s.id]!).existsSync(),
+        )
+        .toList();
+  }
 
   /// The downloaded file for a song when it is still on this device,
   /// otherwise its streaming URL.
@@ -799,18 +836,62 @@ class MusicController extends ChangeNotifier {
     return song.url;
   }
 
-  Future<String> resolvedPlayableUrl(Song song) async {
+  Future<String> resolvedPlayableUrl(
+    Song song, {
+    bool downloading = false,
+  }) async {
+    if (song.isPrivate) {
+      final item = savedMedia
+          .where((m) => '$privateSongPrefix${m.id}' == song.id)
+          .firstOrNull;
+      if (item == null ||
+          (song.ownerUid.isNotEmpty && song.ownerUid != _accountUid)) {
+        throw StateError('This private file belongs to another account.');
+      }
+      final resolved = await privateSong(item);
+      if (resolved == null) {
+        throw StateError('The private file is unavailable.');
+      }
+      return resolved.url;
+    }
     final local = playableUrl(song);
     if (!song.isProvider || local.isNotEmpty) return local;
+    var qualityKey = downloading ? 'downloadQuality' : 'wifiQuality';
+    if (!downloading) {
+      try {
+        final network = await Connectivity().checkConnectivity();
+        if (!network.contains(ConnectivityResult.wifi) &&
+            !network.contains(ConnectivityResult.ethernet)) {
+          qualityKey = 'mobileQuality';
+        }
+      } catch (_) {}
+    }
     final provider = _providerById(song.providerId);
     if (provider == null) {
       throw FormatException('Unknown music provider: ${song.providerId}');
+    }
+    if (provider is JioSaavnProvider) {
+      provider.quality = personal.settings.quality(qualityKey).kbps;
+    }
+    if (provider is YouTubeMusicProvider) {
+      provider.preferLowBitrate =
+          personal.settings.quality(
+            downloading ? 'downloadQuality' : 'wifiQuality',
+          ) ==
+          MusicQuality.low;
     }
     return provider.resolveStreamUrl(song);
   }
 
   Map<String, String> playbackHeadersFor(Song song) =>
       _providerById(song.providerId)?.playbackHeaders(song) ?? const {};
+
+  Map<String, String>? audioHeadersFor(Song song, String url) {
+    final scheme = Uri.tryParse(url)?.scheme;
+    if (scheme != 'https' && scheme != 'http') return null;
+    final headers = playbackHeadersFor(song);
+    return headers.isEmpty ? null : headers;
+  }
 
   @override
   void notifyListeners() {
@@ -970,8 +1051,7 @@ class MusicController extends ChangeNotifier {
   Future<void> signOut() async {
     // The phone's push registration can only be removed while signed in.
     await phone?.disablePush();
-    await _audio.stop();
-    await _audioHandler?.stop();
+    await playback.stop();
     unawaited(phone?.setSessionActive(false));
     _stopCatalog();
     if (_auth?.currentUser != null) {
@@ -979,6 +1059,8 @@ class MusicController extends ChangeNotifier {
       await _auth!.signOut();
     }
     signedIn = false;
+    guestMode = false;
+    await _switchAccount('guest');
     current = null;
     queue = const [];
     if (!uploading) uploads = const [];
@@ -990,111 +1072,47 @@ class MusicController extends ChangeNotifier {
   // ── Playback ─────────────────────────────────────────────────────────────
 
   /// Plays an audio [song]. Videos open in their own player screen instead.
-  Future<void> play(Song song, {List<Song>? from}) async {
+  Future<void> play(
+    Song song, {
+    List<Song>? from,
+    Duration? initialPosition,
+  }) async {
     if (song.isVideo) return;
     if (isStreamingLink(song.url)) {
-      notice = 'Streaming links (m3u8, mpd, rtsp) can’t be played in nexApp.';
-      notifyListeners();
+      announce(
+        'Streaming links are not supported. Choose a plain audio or video file.',
+      );
       return;
     }
-    current = song;
-    if (song.isProvider) {
-      _recordStreamSong(song);
-    } else if (!song.isPrivate) {
-      recentSongIds
-        ..remove(song.id)
-        ..insert(0, song.id);
-      if (recentSongIds.length > 20) {
-        recentSongIds.removeRange(20, recentSongIds.length);
-      }
-      unawaited(_prefs.setStringList('recentSongIds', recentSongIds));
-    }
-    final playable = (from ?? songs).where((item) => !item.isVideo).toList();
-    queue = playable.any((item) => item.id == song.id) ? playable : [song];
-    position = Duration.zero;
-    positionListenable.value = Duration.zero;
-    duration = Duration.zero;
-    loading = true;
-    notice = null;
-    notifyListeners();
-    _audioHandler?.mediaItem.add(_mediaItem(song));
-    unawaited(phone?.setSessionActive(true));
-    try {
-      final url = await resolvedPlayableUrl(song);
-      final headers = playbackHeadersFor(song);
-      // just_audio sends custom headers through its local 127.0.0.1 proxy,
-      // which network_security_config.xml allows over cleartext.
-      await _audio.setUrl(url, headers: headers.isEmpty ? null : headers);
-      if (current?.id != song.id) return;
-      library.recordSongPlay(song);
-      // play() only completes when playback stops, so it is not awaited.
-      unawaited(_audio.play());
-    } on PlayerInterruptedException {
-      // A newer play() call replaced this one.
-    } catch (e, st) {
-      debugPrint('Playback failed for "${song.title}": $e\n$st');
-      loading = false;
-      notice = 'Could not load the audio. Check your internet connection.';
-      notifyListeners();
-    }
-  }
-
-  Future<void> togglePlay() async {
-    if (current == null) return;
-    if (_audio.playing) {
-      await _audio.pause();
-    } else {
-      unawaited(_audio.play());
-    }
-  }
-
-  Future<void> pauseAudio() => _audio.pause();
-
-  Future<void> seek(Duration value) => _audio.seek(value);
-
-  Future<void> next() async {
-    final song = current;
-    if (song == null || queue.isEmpty) return;
-    if (queue.length == 1) {
-      if (song.isProvider) {
-        try {
-          final radioTracks = await fetchRadioForSong(song, limit: 10);
-          if (current?.id != song.id) return;
-          final newTracks = radioTracks.where((t) => t.id != song.id).toList();
-          if (newTracks.isNotEmpty) {
-            queue = [song, ...newTracks];
-            notifyListeners();
-            await play(queue[1], from: queue);
-            return;
-          }
-        } catch (_) {}
-      }
-      await _audio.seek(Duration.zero);
-      await _audio.pause();
+    if (song.url.startsWith('device:') && !song.isPrivate) {
+      announce(
+        'This file is on another device. Import it on this phone to play.',
+      );
       return;
     }
-    final index = queue.indexWhere((item) => item.id == song.id);
-    if (!shuffle && index >= queue.length - 1 && song.isProvider) {
-      try {
-        final radioTracks = await fetchRadioForSong(song, limit: 10);
-        if (current?.id != song.id) return;
-        final existingIds = queue.map((s) => s.id).toSet();
-        final newTracks = radioTracks
-            .where((t) => !existingIds.contains(t.id))
-            .toList();
-        if (newTracks.isNotEmpty) {
-          queue = [...queue, ...newTracks];
-          notifyListeners();
-          await play(queue[index + 1], from: queue);
-          return;
-        }
-      } catch (_) {}
+    if (personal.settings.downloadedOnly &&
+        !song.isLocal &&
+        !isSongDownloaded(song)) {
+      announce(
+        'Downloaded-only mode is on. Download this track or turn the mode off.',
+      );
+      return;
     }
-    final nextIndex = shuffle
-        ? _shuffledIndex(index)
-        : (index + 1) % queue.length;
-    await play(queue[nextIndex], from: queue);
+    await playback.play(
+      song,
+      from: from,
+      initialPosition:
+          initialPosition ??
+          (song.isLongform
+              ? Duration(milliseconds: personal.resumePositions[song.id] ?? 0)
+              : Duration.zero),
+    );
   }
+
+  Future<void> togglePlay() => playback.toggle();
+  Future<void> pauseAudio() => playback.pause();
+  Future<void> seek(Duration value) => playback.seek(value);
+  Future<void> next() => playback.next();
 
   // Recommendations and radio from both music providers.
 
@@ -1109,8 +1127,8 @@ class MusicController extends ChangeNotifier {
       final radioTracks = await fetchRadioForSong(song, limit: 30);
       final filtered = radioTracks.where((t) => t.id != song.id).toList();
       if (filtered.isNotEmpty && current?.id == song.id) {
-        queue = [song, ...filtered];
-        notifyListeners();
+        playback.queue.replace([song, ...filtered], song);
+        await playback.queueChanged();
       }
     } catch (e) {
       debugPrint('startRadio error: $e');
@@ -1127,7 +1145,9 @@ class MusicController extends ChangeNotifier {
     if (seed == null) return null;
 
     final radio = await fetchRadioForSong(seed, limit: limit);
-    final filtered = radio.where((s) => s.id != seed.id).toList();
+    final filtered = rankForListener(
+      radio.where((s) => s.id != seed.id).toList(),
+    );
     if (filtered.isEmpty) return null;
 
     return (
@@ -1146,53 +1166,59 @@ class MusicController extends ChangeNotifier {
       final futures = sample.map((s) => fetchRadioForSong(s, limit: 8));
       final candidateLists = await Future.wait(futures);
       final combined = mergeMusicResults(candidateLists, limit: limit);
-      if (combined.isNotEmpty) return combined;
+      if (combined.isNotEmpty) return rankForListener(combined);
     }
-    return (await discovery.browse(limit: limit)).songs.take(limit).toList();
+    return rankForListener(
+      (await discovery.browse(limit: limit)).songs,
+    ).take(limit).toList();
   }
 
-  Future<void> previous() async {
-    final song = current;
-    if (song == null || queue.isEmpty) return;
-    if (position > const Duration(seconds: 4) || queue.length == 1) {
-      return seek(Duration.zero);
-    }
-    var index = queue.indexWhere((item) => item.id == song.id) - 1;
-    if (index < 0) index = queue.length - 1;
-    await play(queue[index], from: queue);
-  }
+  List<Song> rankForListener(List<Song> tracks) => rankDiscovery(
+    tracks,
+    accepts: personal.accepts,
+    recent: recentSongs.map((s) => s.id).toSet(),
+    language: personal.settings.language,
+    feedback: Map<String, int>.from(personal.stats()['feedback'] as Map),
+  );
 
-  int _shuffledIndex(int currentIndex) {
-    if (currentIndex < 0) return _random.nextInt(queue.length);
-    final pick = _random.nextInt(queue.length - 1);
-    return pick >= currentIndex ? pick + 1 : pick;
-  }
+  Future<void> previous() => playback.previous();
 
   void toggleLike(Song song) {
     if (!liked.add(song.id)) liked.remove(song.id);
-    _prefs.setStringList('likedSongIds', liked.toList());
+    unawaited(
+      _prefs.setStringList(_accountKey('likedSongIds'), liked.toList()),
+    );
     library.setSongLiked(song, liked.contains(song.id));
+    personal.recordLike(song, liked.contains(song.id));
     notifyListeners();
   }
 
-  /// Songs and videos (from every source) in one Home collection.
   List<Song> librarySongs(MediaCollection collection) {
-    library.rememberSongs([...songs, ..._recentStreamSongs, ...providerSongs]);
+    library.rememberSongs([
+      ...songs,
+      ..._recentStreamSongs,
+      ...providerSongs,
+      ...personal.localTracks.values,
+      ...personal.offlineTracks.values,
+    ]);
     return library.collection(collection).map((item) => item.song).toList();
   }
 
-  /// Videos play in their own screen, outside [play].
-  void recordVideoPlay(Song song) => library.recordSongPlay(song);
+  void recordVideoPlay(Song song) {
+    library.recordSongPlay(song);
+    personal.recordPlay(song);
+  }
 
   void toggleShuffle() {
-    shuffle = !shuffle;
-    notifyListeners();
+    playback.queue.setShuffle(!playback.queue.shuffled);
+    unawaited(playback.queueChanged());
   }
 
   Future<void> toggleRepeat() async {
-    repeat = !repeat;
-    await _audio.setLoopMode(repeat ? LoopMode.one : LoopMode.off);
-    notifyListeners();
+    final modes = MusicRepeat.values;
+    await playback.setRepeat(
+      modes[(playback.queue.repeat.index + 1) % modes.length],
+    );
   }
 
   void setDarkMode(bool value) {
@@ -1554,7 +1580,17 @@ class MusicController extends ChangeNotifier {
   /// and recents. Stops playback when one of them is playing.
   Future<void> _forgetSongs(Set<String> ids) async {
     if (ids.isEmpty) return;
+    if (ids.contains(playback.queue.currentId)) {
+      await playback.stop();
+      playback.queue.currentId = null;
+    }
     library.removeSongs(ids);
+    for (final id in ids) {
+      playback.queue.remove(id);
+      personal.offlineTracks.remove(id);
+    }
+    personal.changed();
+    await playback.queueChanged();
     songs = songs.where((item) => !ids.contains(item.id)).toList();
     queue = queue.where((item) => !ids.contains(item.id)).toList();
     for (final id in ids) {
@@ -1562,12 +1598,16 @@ class MusicController extends ChangeNotifier {
     }
     if (liked.any(ids.contains)) {
       liked.removeAll(ids);
-      unawaited(_prefs.setStringList('likedSongIds', liked.toList()));
+      unawaited(
+        _prefs.setStringList(_accountKey('likedSongIds'), liked.toList()),
+      );
     }
     final recentCount = recentSongIds.length;
     recentSongIds.removeWhere(ids.contains);
     if (recentSongIds.length != recentCount) {
-      unawaited(_prefs.setStringList('recentSongIds', recentSongIds));
+      unawaited(
+        _prefs.setStringList(_accountKey('recentSongIds'), recentSongIds),
+      );
     }
     if (ids.contains(current?.id)) {
       await _audio.stop();
@@ -2072,118 +2112,15 @@ class MusicController extends ChangeNotifier {
 
   /// Saves a public song inside the app so it plays without internet.
   Future<void> downloadSong(Song song) async {
-    if (kIsWeb ||
-        song.isPrivate ||
-        isSongDownloaded(song) ||
-        songDownloads.containsKey(song.id)) {
-      return;
-    }
-    songDownloads[song.id] = 0;
-    notifyListeners();
-    final notificationId = 2000 + (song.id.hashCode & 0x3FF);
-    unawaited(
-      phone?.showProgress(
-        notificationId,
-        title: 'Downloading',
-        text: song.title,
-      ),
-    );
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30);
-    File? file;
     try {
-      final sourceUrl = await resolvedPlayableUrl(song);
-      final documents = await getApplicationDocumentsDirectory();
-      final folder = Directory(path.join(documents.path, 'offline_songs'));
-      await folder.create(recursive: true);
-      final extension = path.extension(Uri.parse(sourceUrl).path).toLowerCase();
-      final defaultExtension = switch (song.providerId) {
-        'ytmusic' || 'ytvideo' => '.mp4',
-        _ => '.mp3',
-      };
-      final safeId = song.id.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      file = File(
-        path.join(
-          folder.path,
-          '$safeId${extension.isEmpty ? defaultExtension : extension}',
-        ),
-      );
-      final request = await client.getUrl(Uri.parse(sourceUrl));
-      for (final header in playbackHeadersFor(song).entries) {
-        request.headers.set(header.key, header.value);
-      }
-      final response = await request.close().timeout(
-        const Duration(minutes: 1),
-      );
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('HTTP ${response.statusCode}');
-      }
-      final expected = response.contentLength;
-      final sink = file.openWrite();
-      var received = 0;
-      var reported = 0.0;
-      var notified = 0;
-      try {
-        await for (final chunk in response.timeout(
-          const Duration(minutes: 1),
-        )) {
-          sink.add(chunk);
-          received += chunk.length;
-          if (expected > 0 && received / expected - reported >= 0.02) {
-            reported = received / expected;
-            songDownloads[song.id] = reported;
-            notifyListeners();
-            // Android drops notification updates that come too fast.
-            final percent = (reported * 100).round();
-            if (percent - notified >= 10) {
-              notified = percent;
-              unawaited(
-                phone?.showProgress(
-                  notificationId,
-                  title: 'Downloading',
-                  text: song.title,
-                  percent: percent,
-                ),
-              );
-            }
-          }
-        }
-      } finally {
-        await sink.close();
-      }
-      if (received == 0) {
-        throw const FileSystemException('The download was empty.');
-      }
-      offlineSongs[song.id] = file.path;
-      await _saveOfflineSongs();
-      notice = 'Saved for offline listening.';
-      unawaited(
-        phone?.showDone(notificationId, title: 'Downloaded', text: song.title),
-      );
-    } catch (error) {
-      await _deleteQuietly(file);
-      notice = 'Download failed: $error';
-      unawaited(
-        phone?.showDone(
-          notificationId,
-          title: 'Download failed',
-          text: song.title,
-        ),
-      );
-    } finally {
-      client.close(force: true);
-      songDownloads.remove(song.id);
-      notifyListeners();
+      await downloads.enqueue([song]);
+    } catch (e) {
+      announce('$e');
     }
   }
 
-  Future<void> removeSongDownload(Song song) async {
-    _dropOfflineSong(song.id);
-    notice = 'Download removed.';
-    notifyListeners();
-  }
+  Future<void> removeSongDownload(Song song) => downloads.remove(song.id);
 
-  /// Forgets a downloaded song and deletes its file.
   void _dropOfflineSong(String id) {
     final localPath = offlineSongs.remove(id);
     if (localPath == null) return;
@@ -2196,7 +2133,7 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> _saveOfflineSongs() =>
-      _prefs.setString('offlineSongs', jsonEncode(offlineSongs));
+      _prefs.setString(_accountKey('offlineSongs'), jsonEncode(offlineSongs));
 
   // ── Private library ──────────────────────────────────────────────────────
 
@@ -2276,6 +2213,7 @@ class MusicController extends ChangeNotifier {
       kind: item.kind,
       url: url,
       ownerName: 'Private library',
+      ownerUid: _accountUid,
       storagePath: item.storagePath,
     );
   }
@@ -2670,7 +2608,7 @@ class MusicController extends ChangeNotifier {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   Future<void> _saveOfflinePaths() =>
-      _prefs.setString('offlineMedia', jsonEncode(offlinePaths));
+      _prefs.setString(_accountKey('offlineMedia'), jsonEncode(offlinePaths));
 
   bool _validTitle(String title) {
     if (title.isEmpty) {
@@ -2857,7 +2795,18 @@ class MusicController extends ChangeNotifier {
     }
     _catalogSaveTimer?.cancel();
     _widgetTimer?.cancel();
-    _audio.dispose();
+    downloads
+      ..removeListener(_downloadStateChanged)
+      ..dispose();
+    playback
+      ..removeListener(_playerChanged)
+      ..dispose();
+    personal
+      ..removeListener(notifyListeners)
+      ..dispose();
+    social
+      ?..removeListener(notifyListeners)
+      ..dispose();
     positionListenable.dispose();
     library
       ..removeListener(notifyListeners)

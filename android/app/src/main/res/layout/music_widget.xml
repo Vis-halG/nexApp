@@ -1,0 +1,12 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp" android:background="@drawable/music_widget_bg">
+    <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="nexApp" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold" android:ellipsize="end" android:maxLines="1" />
+    <TextView android:id="@+id/widget_artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#D4C6FF" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center">
+        <TextView android:id="@+id/widget_previous" android:layout_width="64dp" android:layout_height="match_parent" android:gravity="center" android:text="◀◀" android:textSize="22sp" android:textColor="#FFFFFF" android:contentDescription="Previous" />
+        <TextView android:id="@+id/widget_toggle" android:layout_width="64dp" android:layout_height="match_parent" android:gravity="center" android:text="▶" android:textSize="26sp" android:textColor="#FFFFFF" android:contentDescription="Play or pause" />
+        <TextView android:id="@+id/widget_next" android:layout_width="64dp" android:layout_height="match_parent" android:gravity="center" android:text="▶▶" android:textSize="22sp" android:textColor="#FFFFFF" android:contentDescription="Next" />
+    </LinearLayout>
+    <TextView android:id="@+id/widget_song1" android:layout_width="match_parent" android:layout_height="32dp" android:textColor="#FFFFFF" android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/widget_song2" android:layout_width="match_parent" android:layout_height="32dp" android:textColor="#FFFFFF" android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/widget_song3" android:layout_width="match_parent" android:layout_height="32dp" android:textColor="#FFFFFF" android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end" />
+</LinearLayout>
