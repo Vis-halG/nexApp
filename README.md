@@ -4,11 +4,18 @@ Flutter app for shared music, online songs and videos.
 Signed-in listeners can upload songs and videos into shared categories. Files
 are stored on Cloudinary; Firebase handles login and the shared listing.
 
-Version `0.4.0+8022` has four tabs: Home, Stream, Library and Profile. Home
+Version `0.4.1+8023` has four tabs: Home, Stream, Library and Profile. Home
 groups songs and videos into recently played/watched, liked, most played and
 never played collections. Stream combines JioSaavn and YouTube Music with
-Quick Picks, song radio and a YouTube video filter. Movie discovery and its
-player have been removed.
+Quick Picks, song radio and artist browsing. Available music videos open from
+the song player. Library also groups songs by artist. Random Play uses every
+source on Home, online songs on Stream, and saved/library songs on Library.
+
+Uploads and downloads wait and automatically retry temporary socket/DNS errors
+instead of failing the entire queue. Downloads show Wi-Fi waits and explicit
+retry controls. Uploaded-file artist tags are read on Android; missing tags can
+be set from song options. These supplemental tags stay with the account on this
+device and do not require changes to the existing backend rules.
 
 The repository is now [Vis-halG/nexApp](https://github.com/Vis-halG/nexApp).
 Public app names, desktop windows and release APKs use `nexApp`. Registered

@@ -33,6 +33,67 @@ Song song(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
+    'random play keeps Stream and Library queues separate and Home combines them',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final native = _PlaybackFake();
+      final music = MusicController(
+        prefs,
+        player: native,
+        musicProvider: _HeaderProvider(),
+      );
+      music.personal.settings.values['gapless'] = false;
+      music.personal.settings.values['crossfade'] = false;
+      final upload = song('upload'),
+          stream = song('online', provider: 'header'),
+          local = song('local:device', url: 'content://media/audio/1'),
+          liked = song('liked', provider: 'header');
+      music.songs = [upload, song('video').copyWith(kind: 'video')];
+      music.providerSongs = [stream];
+      music.personal.localTracks[local.id] = local;
+      music.library.rememberSongs([liked]);
+      music.library.setSongLiked(liked, true);
+      expect(
+        music.randomSongsFor(MusicRandomScope.stream).map((s) => s.id).toSet(),
+        {'online', 'liked'},
+      );
+      expect(
+        music.randomSongsFor(MusicRandomScope.library).map((s) => s.id).toSet(),
+        {'upload', 'local:device', 'liked'},
+      );
+      expect(
+        music.randomSongsFor(MusicRandomScope.home).map((s) => s.id).toSet(),
+        {'upload', 'online', 'local:device', 'liked'},
+      );
+      await music.playRandom(MusicRandomScope.library, random: Random(4));
+      expect(music.playback.queue.tracks.map((s) => s.id).toSet(), {
+        'upload',
+        'local:device',
+        'liked',
+      });
+      expect(music.playback.queue.shuffled, true);
+      await music.playback.onQueueEnd!();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(
+        jsonDecode(prefs.getString('playback_queue_v1')!)['randomScope'],
+        'library',
+      );
+      final restored = MusicController(
+        prefs,
+        player: _PlaybackFake(),
+        musicProvider: _HeaderProvider(),
+      );
+      await restored.playback.onQueueEnd!();
+      expect(
+        restored.playback.queue.tracks.any((s) => s.id == 'online'),
+        false,
+      );
+      restored.dispose();
+      music.dispose();
+    },
+  );
+  test(
     'play after completion restarts from the beginning, while an idle saved queue resumes its position',
     () async {
       final native = _PlaybackFake();
@@ -458,6 +519,8 @@ class _PlaybackFake extends Fake implements AudioPlayer {
   ProcessingState get processingState => state;
   @override
   bool get playing => false;
+  @override
+  Duration get duration => const Duration(seconds: 12);
   @override
   Stream<int?> get androidAudioSessionIdStream => const Stream.empty();
   @override

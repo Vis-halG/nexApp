@@ -3,6 +3,8 @@ import 'dart:math';
 import 'music_data.dart';
 import 'package:pointycastle/digests/sha256.dart';
 
+enum MusicRandomScope { home, stream, library }
+
 String musicStorageId(String value) => SHA256Digest()
     .process(utf8.encode(value))
     .map((b) => b.toRadixString(16).padLeft(2, '0'))

@@ -28,6 +28,7 @@ import 'music_device.dart';
 import 'music_longform.dart';
 import 'music_portability.dart';
 import 'music_catalog.dart';
+import 'music_artists.dart';
 import 'music_social.dart';
 import 'phone_services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1225,7 +1226,7 @@ class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
 
     return Scaffold(
       body: SafeArea(bottom: false, child: currentView),
-      floatingActionButton: _currentTabIndex == 0
+      floatingActionButton: _currentTabIndex < 3
           ? FloatingActionButton(
               tooltip: 'Play random',
               onPressed: () => _playRandomSong(context),
@@ -1276,24 +1277,12 @@ class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
   }
 
   void _playRandomSong(BuildContext context) {
-    final music = context.read<MusicController>();
-    List<Song> pool = const [];
-    if (music.providerSongs.isNotEmpty) {
-      pool = music.providerSongs.where((s) => !s.isVideo).toList();
-    }
-    if (pool.isEmpty) {
-      pool = music.songs.where((s) => !s.isVideo).toList();
-    }
-    if (pool.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('No songs available to play right now')),
-        );
-      return;
-    }
-    final randomSong = pool[math.Random().nextInt(pool.length)];
-    _openSong(context, randomSong, queue: pool);
+    final scope = switch (_currentTabIndex) {
+      1 => MusicRandomScope.stream,
+      2 => MusicRandomScope.library,
+      _ => MusicRandomScope.home,
+    };
+    unawaited(context.read<MusicController>().playRandom(scope));
   }
 }
 
@@ -2124,10 +2113,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
   Timer? _debounce;
   int _request = 0;
   int _page = 1;
-  bool _videos = false,
-      _loading = false,
-      _loadingMore = false,
-      _hasMore = false;
+  bool _loading = false, _loadingMore = false, _hasMore = false;
   String _category = 'Trending';
   List<Song> _songs = [], _quickPicks = [], _similar = [];
   String _similarTitle = '';
@@ -2174,7 +2160,6 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
     _debounce?.cancel();
     final request = ++_request;
     final music = context.read<MusicController>();
-    final videos = _videos;
     final query = _query;
     final page = more ? _page + 1 : 1;
     if (refresh) music.discovery.clearCache();
@@ -2190,12 +2175,12 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
     try {
       final result = await music.discovery.browse(
         query: more && query.isEmpty ? 'Trending Indian music' : query,
-        videos: videos,
+        videos: false,
         page: more && query.isEmpty ? page - 1 : page,
         limit: 20,
       );
       if (!mounted || request != _request) return;
-      final home = !videos && query.isEmpty && !more;
+      final home = query.isEmpty && !more;
       setState(() {
         final combined = mergeMusicResults([
           [..._songs, ...result.songs],
@@ -2207,6 +2192,8 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
         _loading = false;
         _loadingMore = false;
       });
+      music.streamRandomTracks = List.of(_songs);
+      music.library.rememberSongs(_songs);
       if (home) {
         final picks = await music.fetchQuickPicks(limit: 12);
         final similar = await music.fetchSimilarToLastPlayed(limit: 12);
@@ -2239,12 +2226,13 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final showHome =
-        !_videos && _search.text.trim().isEmpty && _category == 'Trending';
-    final tracks =
-        _category == 'Quick Picks' && !_videos && _search.text.trim().isEmpty
+    final showHome = _search.text.trim().isEmpty && _category == 'Trending';
+    final tracks = _category == 'Quick Picks' && _search.text.trim().isEmpty
         ? _quickPicks
         : _songs;
+    final artists = groupSongsByArtist(
+      tracks,
+    ).where((a) => !a.unknown).take(12).toList();
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollInfo) {
         if (scrollInfo.metrics.axis == Axis.vertical) {
@@ -2269,7 +2257,6 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 28),
           children: [
-            const DiscoveryTools(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
               child: Row(
@@ -2292,9 +2279,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                           ),
                         ),
                         Text(
-                          _videos
-                              ? 'Music videos from YouTube'
-                              : 'JioSaavn + YouTube Music, together',
+                          'JioSaavn + YouTube Music, together',
                           style: TextStyle(
                             fontSize: 12,
                             color: scheme.onSurfaceVariant,
@@ -2317,9 +2302,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                 controller: _search,
                 onChanged: _onSearch,
                 decoration: InputDecoration(
-                  hintText: _videos
-                      ? 'Search YouTube videos'
-                      : 'Search both music providers',
+                  hintText: 'Search both music providers',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _search.text.isEmpty
                       ? null
@@ -2334,32 +2317,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                    value: false,
-                    label: Text('Songs'),
-                    icon: Icon(Icons.music_note),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Videos'),
-                    icon: Icon(Icons.smart_display_outlined),
-                  ),
-                ],
-                selected: {_videos},
-                onSelectionChanged: (selection) {
-                  setState(() {
-                    _videos = selection.single;
-                    _category = 'Trending';
-                  });
-                  _load();
-                },
-              ),
-            ),
-            if (!_videos && _search.text.trim().isEmpty)
+            if (_search.text.trim().isEmpty)
               SizedBox(
                 height: 48,
                 child: ListView.separated(
@@ -2377,6 +2335,36 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                   ),
                 ),
               ),
+            if (artists.isNotEmpty && !_loading) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+                child: Text(
+                  'Browse by artist',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              SizedBox(
+                height: 48,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: artists.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => ActionChip(
+                    avatar: const Icon(Icons.person_outline, size: 18),
+                    label: Text(artists[i].name),
+                    onPressed: () => _push(
+                      context,
+                      ArtistAlbumScreen(
+                        song: artists[i].tracks.first.copyWith(
+                          artist: artists[i].name,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (_unavailable.isNotEmpty && !_loading)
               Padding(
                 padding: const EdgeInsets.all(20),
@@ -2422,12 +2410,10 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
               _heading(
                 _search.text.trim().isNotEmpty
                     ? 'Search results'
-                    : _videos
-                    ? 'Music videos'
                     : _category == 'Trending'
                     ? 'Made for your next listen'
                     : _category,
-                _videos ? 'YouTube' : 'A mix from JioSaavn and YouTube Music',
+                'A mix from JioSaavn and YouTube Music',
               ),
               if (tracks.isEmpty)
                 Padding(
@@ -3054,6 +3040,7 @@ class SongTile extends StatelessWidget {
             String source,
             bool offline,
             double? download,
+            String? downloadState,
           })
         >(
           (music) => (
@@ -3062,13 +3049,25 @@ class SongTile extends StatelessWidget {
             source: music.songSource(song),
             offline: music.isSongDownloaded(song),
             download: music.songDownloads[song.id],
+            downloadState: switch (music.downloads.jobs[song.id]?.status) {
+              MusicDownloadStatus.paused =>
+                music.downloads.paused
+                    ? 'Download paused'
+                    : music.downloads.waitingForWifi
+                    ? 'Waiting for Wi-Fi'
+                    : 'Waiting for connection',
+              MusicDownloadStatus.failed => 'Download failed',
+              _ => null,
+            },
           ),
         );
     final download = tile.download;
     final details = [
       tile.source,
       if (song.isVideo) 'Video',
-      if (download != null)
+      if (tile.downloadState != null)
+        tile.downloadState!
+      else if (download != null)
         'Downloading ${(download * 100).round()}%'
       else if (tile.offline)
         'Offline',
@@ -3114,6 +3113,9 @@ Future<void> _songActions(BuildContext context, Song song) {
   final liked = music.isLiked(song);
   final downloaded = music.isSongDownloaded(song);
   final downloading = music.songDownloads.containsKey(song.id);
+  final job = music.downloads.jobs[song.id];
+  final waiting = job?.status == MusicDownloadStatus.paused;
+  final failed = job?.status == MusicDownloadStatus.failed;
   return _sheet(
     context,
     title: song.title,
@@ -3141,26 +3143,34 @@ Future<void> _songActions(BuildContext context, Song song) {
         ),
       if (!kIsWeb)
         ListTile(
-          enabled: !downloading,
           leading: Icon(
             downloaded ? Icons.offline_pin_rounded : Icons.download_rounded,
           ),
           title: Text(
             downloading
-                ? 'Downloading…'
+                ? 'View download progress'
+                : waiting
+                ? 'Download waiting'
+                : failed
+                ? 'Retry download'
                 : downloaded
                 ? 'Remove download'
                 : 'Download',
           ),
-          subtitle: downloaded || downloading
+          subtitle: waiting || failed
+              ? Text(job?.error ?? 'View Downloads to continue')
+              : downloaded || downloading
               ? null
               : const Text('Play it without internet'),
-          onTap: () {
+          onTap: () async {
             Navigator.pop(sheetContext);
-            if (downloaded) {
+            if (downloading || waiting) {
+              _push(context, const MusicDownloadsScreen());
+            } else if (downloaded) {
               music.removeSongDownload(song);
             } else {
-              music.downloadSong(song);
+              await music.downloadSong(song);
+              if (context.mounted) _push(context, const MusicDownloadsScreen());
             }
           },
         ),
@@ -3380,6 +3390,7 @@ class UploadScreen extends StatefulWidget {
 class _UploadScreenState extends State<UploadScreen> {
   late final MusicController _music;
   final _title = TextEditingController();
+  final _artist = TextEditingController();
   final List<UploadItem> _picked = [];
   final List<String> _rejected = [];
   String? _categoryId;
@@ -3421,6 +3432,7 @@ class _UploadScreenState extends State<UploadScreen> {
       } catch (_) {}
     }
     _title.dispose();
+    _artist.dispose();
     super.dispose();
   }
 
@@ -3599,6 +3611,11 @@ class _UploadScreenState extends State<UploadScreen> {
     }
     if (_picked.isEmpty) return;
     if (_picked.length == 1) _picked.first.title = _title.text;
+    if (_artist.text.trim().isNotEmpty) {
+      for (final item in _picked) {
+        item.artist = _artist.text.trim();
+      }
+    }
     final items = List.of(_picked);
     unawaited(_music.startUploads(items, categoryId: categoryId));
     // The batch is queued synchronously; keep the selection if it was refused.
@@ -3713,6 +3730,20 @@ class _UploadScreenState extends State<UploadScreen> {
               style: TextStyle(color: muted, fontSize: 12),
             ),
           ],
+          if (count > 0) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _artist,
+              maxLength: 160,
+              decoration: InputDecoration(
+                labelText: count > 1
+                    ? 'Artist for selected songs (optional)'
+                    : 'Artist (optional)',
+                helperText: 'Leave blank to read the artist from each file.',
+                counterText: '',
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           _ChoicePicker(
             label: 'Category',
@@ -3774,12 +3805,17 @@ class _UploadScreenState extends State<UploadScreen> {
         '${count(UploadStatus.cancelled)} cancelled',
     ].join(' · ');
     final paused = music.uploadsPaused;
+    final waiting = music.uploadsWaiting;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           uploading
-              ? (paused ? 'Uploads paused' : 'Uploading')
+              ? (paused
+                    ? 'Uploads paused'
+                    : waiting
+                    ? 'Waiting for connection'
+                    : 'Uploading')
               : 'Upload finished',
         ),
       ),
@@ -3791,7 +3827,7 @@ class _UploadScreenState extends State<UploadScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${music.uploadsFinished} of ${uploads.length} done',
+                  '${music.uploadsFinished} of ${uploads.length} processed',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
@@ -3802,12 +3838,31 @@ class _UploadScreenState extends State<UploadScreen> {
                 const SizedBox(height: 8),
                 Text(
                   uploading
-                      ? paused
+                      ? waiting
+                            ? music.uploadWaitMessage!
+                            : paused
                             ? 'Paused. A song that was halfway starts again when you resume.'
                             : 'Keep nexApp open until the uploads finish.'
                       : summary,
                   style: TextStyle(color: _muted(context), fontSize: 12),
                 ),
+                if (uploading) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    summary,
+                    style: TextStyle(color: _muted(context), fontSize: 12),
+                  ),
+                ],
+                if (waiting || (uploading && failed > 0))
+                  TextButton.icon(
+                    onPressed: failed > 0
+                        ? music.retryFailedUploads
+                        : music.resumeUploads,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(
+                      failed > 0 ? 'Retry failed ($failed)' : 'Retry now',
+                    ),
+                  ),
               ],
             ),
           ),
@@ -4134,7 +4189,7 @@ class _UploadRow extends StatelessWidget {
     final (Widget icon, String status) = switch (item.status) {
       UploadStatus.queued => (
         Icon(Icons.schedule_rounded, color: scheme.onSurfaceVariant),
-        'Waiting',
+        item.error ?? 'Waiting',
       ),
       UploadStatus.uploading => (
         SizedBox.square(
@@ -4467,12 +4522,18 @@ class SongEditorScreen extends StatefulWidget {
 
 class _SongEditorScreenState extends State<SongEditorScreen> {
   late final _title = TextEditingController(text: widget.song.title);
+  late final _artist = TextEditingController(
+    text:
+        context.read<MusicController>().personal.songArtists[widget.song.id] ??
+        widget.song.artist,
+  );
   late String _categoryId = widget.song.categoryId;
   bool _saving = false;
 
   @override
   void dispose() {
     _title.dispose();
+    _artist.dispose();
     super.dispose();
   }
 
@@ -4483,6 +4544,7 @@ class _SongEditorScreenState extends State<SongEditorScreen> {
       widget.song,
       title: _title.text,
       categoryId: _categoryId,
+      artist: _artist.text,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -4508,6 +4570,16 @@ class _SongEditorScreenState extends State<SongEditorScreen> {
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Title',
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _artist,
+            maxLength: 160,
+            decoration: const InputDecoration(
+              labelText: 'Artist',
+              helperText: 'Artist tags group your songs on this device.',
               counterText: '',
             ),
           ),

@@ -8,12 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.Executors
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -79,6 +81,22 @@ object NexPhone {
             }
             "setSessionActive" -> sessionActive = call.argument<Boolean>("active") == true
             "releaseUri" -> releaseUri(context, call.argument<String>("uri"))
+            "readMediaArtist" -> {
+                val filePath = call.argument<String>("path") ?: ""
+                artistReader.execute {
+                    val reader = MediaMetadataRetriever()
+                    val artist = try {
+                        reader.setDataSource(filePath)
+                        reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.trim() ?: ""
+                    } catch (_: Exception) {
+                        ""
+                    } finally {
+                        try { reader.release() } catch (_: Exception) { }
+                    }
+                    mainThread.post { result.success(artist) }
+                }
+                return
+            }
             "copyToCache" -> {
                 copyInBackground(context, call.argument<String>("uri"), call.argument<String>("name"), result)
                 return
@@ -156,6 +174,7 @@ object NexPhone {
     }
 
     private val mainThread = Handler(Looper.getMainLooper())
+    private val artistReader = Executors.newFixedThreadPool(3)
 
     /**
      * Name, size and URI of a chosen file. Keeps read access so the file can

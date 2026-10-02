@@ -6,6 +6,7 @@ import 'package:pointycastle/api.dart';
 import 'package:pointycastle/block/desede_engine.dart';
 
 import 'music_data.dart';
+import 'music_transfer.dart';
 
 typedef ProviderJsonFetcher = Future<Map<String, dynamic>> Function(Uri uri);
 typedef ProviderJsonPoster =
@@ -226,8 +227,9 @@ class JioSaavnProvider implements MusicProvider {
         const Duration(seconds: 30),
       );
       if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'JioSaavn returned HTTP ${response.statusCode}.',
+        throw TransferHttpException(
+          response.statusCode,
+          message: 'JioSaavn returned HTTP ${response.statusCode}.',
           uri: uri,
         );
       }
@@ -630,8 +632,9 @@ class YouTubeMusicProvider implements MusicProvider {
         const Duration(seconds: 30),
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException(
-          'YouTube Music returned HTTP ${response.statusCode}.',
+        throw TransferHttpException(
+          response.statusCode,
+          message: 'YouTube Music returned HTTP ${response.statusCode}.',
           uri: uri,
         );
       }

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'listening_models.dart';
 import 'music_data.dart';
+import 'music_transfer.dart';
 
 enum MusicDownloadStatus {
   queued,
@@ -39,7 +40,20 @@ class MusicDownloads extends ChangeNotifier {
     required this.onSaved,
     this.onProgress,
     Future<bool> Function()? wifiCheck,
-  }) : _wifiCheck = wifiCheck ?? _onWifi {
+    HttpClient Function()? clientFactory,
+    Future<Directory> Function()? documentsDirectory,
+    Stream<List<ConnectivityResult>>? networkChanges,
+    Duration retryDelay = const Duration(seconds: 15),
+  }) : _wifiCheck = wifiCheck ?? _onWifi,
+       _clientFactory = clientFactory ?? HttpClient.new,
+       _documentsDirectory =
+           documentsDirectory ?? getApplicationDocumentsDirectory {
+    _recovery = TransferRecovery(
+      retryDelay: retryDelay,
+      onRetry: () {
+        if (!_disposed && !paused) unawaited(resume());
+      },
+    );
     try {
       final saved = jsonDecode(prefs.getString('$storageKey:queue') ?? '{}');
       if (saved is Map) {
@@ -60,9 +74,10 @@ class MusicDownloads extends ChangeNotifier {
       scheduleMicrotask(() => unawaited(_drain()));
     }
     if (!kIsWeb) {
-      _network = Connectivity().onConnectivityChanged.listen((_) {
-        if (!paused) unawaited(resume());
-      }, onError: (Object _) {});
+      _network = (networkChanges ?? Connectivity().onConnectivityChanged)
+          .listen((_) {
+            if (!paused) unawaited(resume());
+          }, onError: (Object _) {});
     }
   }
   final SharedPreferences prefs;
@@ -75,11 +90,19 @@ class MusicDownloads extends ChangeNotifier {
   final void Function() onSaved;
   final void Function(MusicDownload job)? onProgress;
   final Future<bool> Function() _wifiCheck;
+  final HttpClient Function() _clientFactory;
+  final Future<Directory> Function() _documentsDirectory;
+  late final TransferRecovery _recovery;
   final Map<String, MusicDownload> jobs = {};
   final Map<String, HttpClient> _clients = {};
   StreamSubscription<dynamic>? _network;
   bool _running = false, _disposed = false, paused = false;
   bool _drainAgain = false;
+  bool _waitingForWifi = false;
+  bool get waitingForWifi => _waitingForWifi;
+  String? get waitingMessage => _waitingForWifi
+      ? 'Waiting for Wi-Fi. Connect to Wi-Fi or allow mobile data below.'
+      : _recovery.message;
   int bytesOnDisk = 0;
   static Future<bool> _onWifi() async {
     final status = await Connectivity().checkConnectivity();
@@ -104,13 +127,40 @@ class MusicDownloads extends ChangeNotifier {
           {
             MusicDownloadStatus.queued,
             MusicDownloadStatus.downloading,
+            MusicDownloadStatus.paused,
           }.contains(existing.status)) {
         continue;
       }
       jobs[song.id] = MusicDownload(song);
     }
     _emit();
-    unawaited(_drain());
+    if (!paused && settings().wifiOnly && !await _wifiCheck()) {
+      _waitForWifi();
+    } else {
+      unawaited(_drain());
+    }
+  }
+
+  void _waitForWifi() {
+    _waitingForWifi = true;
+    _recovery.clear();
+    _waitForConnection('Waiting for Wi-Fi');
+  }
+
+  void _waitForConnection(String message) {
+    for (final job in jobs.values) {
+      if (job.status == MusicDownloadStatus.queued ||
+          job.status == MusicDownloadStatus.downloading) {
+        final wasDownloading = job.status == MusicDownloadStatus.downloading;
+        job.status = MusicDownloadStatus.paused;
+        job.error = message;
+        job.bytes = 0;
+        job.progress = 0;
+        _clients[job.song.id]?.close(force: true);
+        if (wasDownloading) onProgress?.call(job);
+      }
+    }
+    _emit();
   }
 
   void _emit() {
@@ -142,22 +192,20 @@ class MusicDownloads extends ChangeNotifier {
   String? _savedQueue;
 
   Future<void> _drain() async {
-    if (_disposed || paused) return;
+    if (_disposed || paused || _recovery.waiting) return;
     if (_running) {
       _drainAgain = true;
       return;
     }
     _running = true;
     try {
-      while (!_disposed && !paused) {
+      while (!_disposed && !paused && !_recovery.waiting) {
         final job = jobs.values
             .where((j) => j.status == MusicDownloadStatus.queued)
             .firstOrNull;
         if (job == null) break;
         if (settings().wifiOnly && !await _wifiCheck()) {
-          job.status = MusicDownloadStatus.paused;
-          job.error = 'Waiting for Wi-Fi';
-          _emit();
+          _waitForWifi();
           break;
         }
         await _download(job);
@@ -171,24 +219,26 @@ class MusicDownloads extends ChangeNotifier {
     }
   }
 
-  Future<void> _download(MusicDownload job) async {
+  Future<void> _download(MusicDownload job, {bool refreshed = false}) async {
     File? partial;
-    final client = HttpClient()
+    var refresh = false;
+    final client = _clientFactory()
       ..connectionTimeout = const Duration(seconds: 20);
     _clients[job.song.id] = client;
     job.status = MusicDownloadStatus.downloading;
     job.error = null;
     job.bytes = 0;
+    job.total = 0;
     job.progress = 0;
     _emit();
     try {
-      final url = await resolve(job.song);
+      final url = await resolve(job.song).timeout(const Duration(seconds: 45));
       if (_disposed || job.status != MusicDownloadStatus.downloading) return;
       final uri = Uri.parse(url);
       if (uri.scheme != 'https') {
         throw const FormatException('This source cannot be downloaded.');
       }
-      final docs = await getApplicationDocumentsDirectory();
+      final docs = await _documentsDirectory();
       final scope = base64Url
           .encode(utf8.encode(storageKey))
           .replaceAll('=', '');
@@ -205,13 +255,21 @@ class MusicDownloads extends ChangeNotifier {
         ),
       );
       partial = File('${file.path}.part');
-      final request = await client.getUrl(uri);
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 30));
       headers(job.song).forEach(request.headers.set);
       final response = await request.close().timeout(
         const Duration(seconds: 30),
       );
       if (response.statusCode != 200) {
-        throw HttpException('HTTP ${response.statusCode}');
+        throw TransferHttpException(response.statusCode);
+      }
+      final type = response.headers.contentType?.mimeType ?? '';
+      if (type == 'text/html' || type == 'application/json') {
+        throw const FormatException(
+          'The source returned a page instead of a music file.',
+        );
       }
       job.total = response.contentLength;
       await measureStorage();
@@ -248,9 +306,7 @@ class MusicDownloads extends ChangeNotifier {
         await sink.close();
       }
       if (job.bytes == 0 || (job.total > 0 && job.bytes != job.total)) {
-        throw const FileSystemException(
-          'The download was incomplete. Retry it.',
-        );
+        throw const HttpException('The download was incomplete.');
       }
       if (_disposed || job.status != MusicDownloadStatus.downloading) return;
       await partial.rename(file.path);
@@ -261,18 +317,39 @@ class MusicDownloads extends ChangeNotifier {
       bytesOnDisk += job.bytes;
       job.status = MusicDownloadStatus.complete;
       job.progress = 1;
+      _recovery.clear(reset: true);
       onSaved();
       onProgress?.call(job);
     } catch (e) {
-      if (job.status == MusicDownloadStatus.downloading) {
-        job.status = MusicDownloadStatus.failed;
-        job.error = '$e';
+      if (!_disposed && job.status == MusicDownloadStatus.downloading) {
+        if (e is TransferHttpException &&
+            {401, 403}.contains(e.statusCode) &&
+            job.song.isProvider &&
+            !refreshed) {
+          job.status = MusicDownloadStatus.queued;
+          refresh = true;
+        } else if (isTemporaryTransferError(e)) {
+          _recovery.wait(e);
+          _waitForConnection(_recovery.message!);
+        } else {
+          job.status = MusicDownloadStatus.failed;
+          job.error = transferErrorMessage(e);
+          onProgress?.call(job);
+        }
       }
     } finally {
       client.close(force: true);
       _clients.remove(job.song.id);
-      if (partial != null && await partial.exists()) await partial.delete();
+      try {
+        if (partial != null && await partial.exists()) await partial.delete();
+      } on FileSystemException catch (_) {}
       _emit();
+    }
+    if (refresh &&
+        !_disposed &&
+        !paused &&
+        job.status == MusicDownloadStatus.queued) {
+      await _download(job, refreshed: true);
     }
   }
 
@@ -281,15 +358,26 @@ class MusicDownloads extends ChangeNotifier {
     if (job == null) return;
     job.status = MusicDownloadStatus.cancelled;
     _clients[id]?.close(force: true);
+    onProgress?.call(job);
+    if (!jobs.values.any((j) => j.status == MusicDownloadStatus.paused)) {
+      _recovery.clear();
+      _waitingForWifi = false;
+    }
     _emit();
   }
 
   void pause() {
     paused = true;
+    _recovery.clear();
+    _waitingForWifi = false;
     for (final job in jobs.values) {
-      if (job.status == MusicDownloadStatus.downloading) {
+      if (job.status == MusicDownloadStatus.downloading ||
+          job.status == MusicDownloadStatus.queued ||
+          job.status == MusicDownloadStatus.paused) {
         job.status = MusicDownloadStatus.paused;
+        job.error = 'Downloads paused';
         _clients[job.song.id]?.close(force: true);
+        onProgress?.call(job);
       }
     }
     _emit();
@@ -297,8 +385,9 @@ class MusicDownloads extends ChangeNotifier {
 
   Future<void> resume() async {
     if (_disposed) return;
-    if (settings().wifiOnly && !await _wifiCheck()) return;
     paused = false;
+    _recovery.clear();
+    _waitingForWifi = false;
     for (final job in jobs.values) {
       if (job.status == MusicDownloadStatus.paused) {
         job.status = MusicDownloadStatus.queued;
@@ -314,11 +403,19 @@ class MusicDownloads extends ChangeNotifier {
   Future<void> retry(String id) async {
     final job = jobs[id];
     if (job == null) return;
+    if (job.status == MusicDownloadStatus.downloading ||
+        job.status == MusicDownloadStatus.complete) {
+      return;
+    }
     job.status = MusicDownloadStatus.queued;
     job.bytes = 0;
     job.progress = 0;
     job.error = null;
     _emit();
+    if (_recovery.waiting || _waitingForWifi) {
+      await resume();
+      return;
+    }
     await _drain();
   }
 
@@ -349,6 +446,7 @@ class MusicDownloads extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _recovery.dispose();
     unawaited(_network?.cancel());
     for (final client in _clients.values) {
       client.close(force: true);

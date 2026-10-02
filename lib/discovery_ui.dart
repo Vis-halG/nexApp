@@ -359,14 +359,19 @@ class _ArtistAlbumScreenState extends State<ArtistAlbumScreen> {
   Future<void> load() async {
     final music = context.read<MusicController>(), seed = widget.song;
     try {
-      final local = music.allMusic
-          .where(
-            (s) => widget.album
-                ? s.album == seed.album &&
-                      (seed.isLocal || s.artist == seed.artist)
-                : s.artist.toLowerCase() == seed.artist.toLowerCase(),
-          )
-          .toList();
+      final local = widget.album
+          ? music.allMusic
+                .where(
+                  (s) =>
+                      s.album == seed.album &&
+                      (seed.isLocal || s.artist == seed.artist),
+                )
+                .toList()
+          : music.artistCategories
+                    .where((a) => a.key == seed.artist.trim().toLowerCase())
+                    .firstOrNull
+                    ?.tracks ??
+                <Song>[];
       final online = seed.isLocal
           ? <Song>[]
           : widget.album &&
@@ -378,8 +383,15 @@ class _ArtistAlbumScreenState extends State<ArtistAlbumScreen> {
                   ? '${seed.album} ${seed.artist}'
                   : seed.artist,
             )).songs;
+      final matching = online.where(
+        (s) =>
+            widget.album ||
+            songArtistNames(
+              s,
+            ).any((a) => a.toLowerCase() == seed.artist.trim().toLowerCase()),
+      );
       final results = {
-        for (final s in [...local, ...online]) s.id: s,
+        for (final s in [...local, ...matching]) s.id: s,
       }.values.toList();
       music.library.rememberSongs(results);
       if (mounted) {

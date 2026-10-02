@@ -28,6 +28,9 @@ class PersonalMusic extends ChangeNotifier {
       localTracks = {},
       longformTracks = {};
   final Map<String, String> customLyrics = {};
+
+  /// Account-scoped tags supplement public files without requiring new rules.
+  final Map<String, String> songArtists = {};
   final Map<String, int> resumePositions = {};
   final Set<String> hiddenSongs = {}, hiddenArtists = {};
   final Map<String, List<String>> feeds = {};
@@ -92,6 +95,9 @@ class PersonalMusic extends ChangeNotifier {
       customLyrics.addAll(
         Map<String, String>.from(json['lyrics'] as Map? ?? {}),
       );
+      songArtists.addAll(
+        Map<String, String>.from(json['songArtists'] as Map? ?? {}),
+      );
       resumePositions.addAll(
         (json['resume'] as Map? ?? {}).map(
           (k, v) => MapEntry('$k', (v as num).toInt()),
@@ -130,6 +136,7 @@ class PersonalMusic extends ChangeNotifier {
       'localTracks': localTracks.values.map((s) => s.toJson()).toList(),
       'longformTracks': longformTracks.values.map((s) => s.toJson()).toList(),
       'lyrics': customLyrics,
+      'songArtists': songArtists,
       'resume': resumePositions,
       'hiddenSongs': hiddenSongs.toList(),
       'hiddenArtists': hiddenArtists.toList(),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nex_app/main.dart';
 import 'package:nex_app/music_controller.dart';
+import 'package:nex_app/music_ui.dart';
 import 'music_discovery_test.dart' show FakeMusicProvider, track;
 
 void main() {
@@ -45,13 +46,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saavn pick'), findsWidgets);
     expect(find.text('YouTube pick'), findsWidgets);
-    await tester.tap(find.text('Videos'));
+    expect(find.byTooltip('Play random'), findsOneWidget);
+    expect(find.byType(SegmentedButton<bool>), findsNothing);
+    expect(find.text('Videos'), findsNothing);
+    for (final label in [
+      'Music previews',
+      'Moods & languages',
+      'Create a mix',
+      'Identify a song',
+    ]) {
+      expect(find.text(label), findsNothing);
+    }
+    expect(find.text('YouTube video'), findsNothing);
+    await tester.tap(find.text('Library'));
     await tester.pumpAndSettle();
-    expect(find.text('YouTube video'), findsOneWidget);
-    expect(find.text('Saavn pick'), findsNothing);
+    expect(find.byTooltip('Play random'), findsOneWidget);
+    expect(find.text('Artists'), findsOneWidget);
+    controller.current = track('ytmusic', 'YouTube pick');
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: NowPlayingScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Watch Music Video'), findsOneWidget);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(value: controller, child: const NexApp()),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(find.text('Profile'), findsWidgets);
+    expect(find.byTooltip('Play random'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     controller.dispose();

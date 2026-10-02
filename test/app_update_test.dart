@@ -71,7 +71,7 @@ void main() {
       expect(update.buildNumber, greaterThan(4002));
       expect(update.downloadUrl, endsWith('.apk'));
       expect(
-        await service.checkForUpdate(currentVersion: currentAppVersion),
+        await service.checkForUpdate(currentVersion: '0.4.0+8022'),
         isNotNull,
       );
       expect(

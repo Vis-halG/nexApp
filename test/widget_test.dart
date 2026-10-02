@@ -306,7 +306,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Upload finished'), findsOneWidget);
-    expect(find.text('3 of 3 done'), findsOneWidget);
+    expect(find.text('3 of 3 processed'), findsOneWidget);
     expect(find.text('Song A'), findsOneWidget);
     expect(find.text('Retry failed (1)'), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);

@@ -88,6 +88,20 @@ List<Widget> _listeningSongActions(
         'View album',
         () => _push(context, ArtistAlbumScreen(song: song, album: true)),
       ),
+    if (!song.isVideo && !song.isLongform)
+      action(Icons.badge_outlined, 'Set artist tag', () async {
+        final account = music.personal;
+        final value = await _nameDialog(
+          context,
+          title: 'Artist names (comma separated)',
+          action: 'Save',
+          initialValue: account.songArtists[song.id] ?? song.artist,
+        );
+        if (value != null && context.mounted && account == music.personal) {
+          music.setSongArtist(song, value);
+          music.announce('Artist tag saved on this device');
+        }
+      }),
     if (!song.isPrivate && !song.isLocal)
       action(
         Icons.share_outlined,
@@ -217,6 +231,12 @@ class PersonalLibraryPanel extends StatelessWidget {
             onTap: () => _push(context, PlaylistScreen(id: p.id)),
           ),
         ListTile(
+          leading: const Icon(Icons.person_outline_rounded),
+          title: const Text('Artists'),
+          subtitle: Text('${music.artistCategories.length} artist categories'),
+          onTap: () => _push(context, const MusicArtistsScreen()),
+        ),
+        ListTile(
           leading: const Icon(Icons.folder_open),
           title: const Text('Music on this device'),
           subtitle: Text('${music.personal.localTracks.length} tracks'),
@@ -238,6 +258,84 @@ class PersonalLibraryPanel extends StatelessWidget {
           onTap: () => _push(context, const SocialMusicScreen()),
         ),
       ],
+    );
+  }
+}
+
+class MusicArtistsScreen extends StatefulWidget {
+  const MusicArtistsScreen({super.key});
+  @override
+  State<MusicArtistsScreen> createState() => _MusicArtistsScreenState();
+}
+
+class _MusicArtistsScreenState extends State<MusicArtistsScreen> {
+  String query = '';
+  @override
+  Widget build(BuildContext context) {
+    final music = context.watch<MusicController>();
+    final artists = music.artistCategories
+        .where((a) => a.key.contains(query.trim().toLowerCase()))
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Artists')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: TextField(
+              decoration: const InputDecoration(
+                hintText: 'Search artists',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) => setState(() => query = value),
+            ),
+          ),
+          Expanded(
+            child: artists.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No artists found. Add music or search for songs in Stream.',
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: artists.length,
+                    itemBuilder: (_, i) {
+                      final artist = artists[i];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Icon(
+                            artist.unknown
+                                ? Icons.person_search_outlined
+                                : Icons.person_outline,
+                          ),
+                        ),
+                        title: Text(artist.name),
+                        subtitle: Text(
+                          '${artist.tracks.length} song${artist.tracks.length == 1 ? '' : 's'}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _push(
+                          context,
+                          SongListScreen(
+                            title: artist.name,
+                            emptyText: 'No songs from this artist.',
+                            select: (m) =>
+                                m.artistCategories
+                                    .where((a) => a.key == artist.key)
+                                    .firstOrNull
+                                    ?.tracks ??
+                                [],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1090,6 +1188,20 @@ class MusicDownloadsScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
+          if (manager.waitingMessage != null || manager.paused)
+            ListTile(
+              leading: const Icon(Icons.wifi_off_rounded),
+              title: Text(
+                manager.paused ? 'Downloads paused' : manager.waitingMessage!,
+              ),
+              subtitle: const Text(
+                'Queued songs stay ready. Keep the app open to continue.',
+              ),
+              trailing: TextButton(
+                onPressed: () => manager.resume(),
+                child: const Text('Retry now'),
+              ),
+            ),
           SwitchListTile(
             title: const Text('Downloaded-only playback'),
             subtitle: const Text('Play saved music without streaming'),
@@ -1098,6 +1210,9 @@ class MusicDownloadsScreen extends StatelessWidget {
           ),
           SwitchListTile(
             title: const Text('Download on Wi-Fi only'),
+            subtitle: const Text(
+              'Turn off to allow downloads over mobile data',
+            ),
             value: music.personal.settings.wifiOnly,
             onChanged: (v) => music.setListeningSetting('wifiOnly', v),
           ),

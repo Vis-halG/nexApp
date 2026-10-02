@@ -61,13 +61,25 @@ extension MusicListeningActions on MusicController {
           unawaited(
             phone?.showDone(id, title: 'Downloaded', text: job.song.title),
           );
-        } else {
+        } else if (job.status == MusicDownloadStatus.downloading) {
           unawaited(
             phone?.showProgress(
               id,
               title: 'Downloading',
               text: job.song.title,
               percent: (job.progress * 100).round(),
+            ),
+          );
+        } else {
+          unawaited(
+            phone?.showDone(
+              id,
+              title: job.status == MusicDownloadStatus.failed
+                  ? 'Download failed'
+                  : job.status == MusicDownloadStatus.cancelled
+                  ? 'Download cancelled'
+                  : 'Download waiting',
+              text: job.error ?? job.song.title,
             ),
           );
         }
@@ -149,6 +161,7 @@ extension MusicListeningActions on MusicController {
         }
       },
       onQueueEnd: () async {
+        if (_randomScope == MusicRandomScope.library) return;
         final seed = current, account = personal;
         if (seed == null ||
             !seed.isProvider ||
@@ -188,6 +201,89 @@ extension MusicListeningActions on MusicController {
     ])
       s.id: s,
   }.values.toList();
+
+  List<Song> randomSongsFor(MusicRandomScope scope) {
+    final libraryTracks = <Song>[
+      ...songs,
+      ...likedSongs,
+      ...downloadedSongs,
+      ...personal.localTracks.values,
+      for (final playlist in personal.playlists) ...playlist.tracks,
+      for (final item in savedMedia.where((m) => m.kind == 'audio'))
+        Song(
+          id: '$privateSongPrefix${item.id}',
+          title: item.title,
+          kind: 'audio',
+          url: 'device:${item.id}',
+          ownerUid: personal.uid,
+        ),
+    ];
+    final candidates = switch (scope) {
+      MusicRandomScope.home => [...allMusic, ...libraryTracks],
+      MusicRandomScope.stream => [
+        ...streamRandomTracks,
+        ...providerSongs,
+        ...allMusic.where((s) => s.isProvider),
+      ],
+      MusicRandomScope.library => libraryTracks,
+    };
+    return {
+      for (final song in candidates.where(
+        (s) =>
+            !s.isVideo &&
+            !s.isLongform &&
+            (scope != MusicRandomScope.stream || s.isProvider) &&
+            (!s.url.startsWith('device:') || s.isPrivate) &&
+            (!personal.settings.downloadedOnly ||
+                s.isLocal ||
+                isSongDownloaded(s)),
+      ))
+        song.id: song,
+    }.values.toList();
+  }
+
+  Future<void> playRandom(MusicRandomScope scope, {math.Random? random}) async {
+    var pool = randomSongsFor(scope);
+    if (pool.isEmpty && scope != MusicRandomScope.library) {
+      await loadDiscoveryHome();
+      pool = randomSongsFor(scope);
+    }
+    if (pool.isEmpty) {
+      announce(
+        scope == MusicRandomScope.library
+            ? 'No playable songs in your library. Save music or add a playlist first.'
+            : 'No songs available. Refresh Stream and try again.',
+      );
+      return;
+    }
+    final choices = pool.length > 1
+        ? pool.where((s) => s.id != current?.id).toList()
+        : pool;
+    final selected = choices[(random ?? math.Random()).nextInt(choices.length)];
+    playback.queue.setShuffle(true);
+    await play(selected, from: pool, randomScope: scope);
+  }
+
+  List<MusicArtistCategory> get artistCategories => groupSongsByArtist(
+    [
+      ...songs,
+      ...allMusic,
+      for (final playlist in personal.playlists) ...playlist.tracks,
+    ].map(
+      (song) => personal.songArtists.containsKey(song.id)
+          ? song.copyWith(artist: personal.songArtists[song.id])
+          : song,
+    ),
+  );
+
+  void setSongArtist(Song song, String artist) {
+    final value = artist.trim();
+    personal.songArtists[song.id] = value.length > 160
+        ? value.substring(0, 160)
+        : value;
+    personal.changed(sync: false);
+  }
+
   Future<List<MediaItem>> _browseForCar(String parent) async {
     if (!signedIn && !guestMode) return [];
     if (parent == 'root') {
@@ -238,6 +334,7 @@ extension MusicListeningActions on MusicController {
         jsonEncode({
           ...playback.queue.toJson(),
           'positionMs': playback.position.value.inMilliseconds,
+          'randomScope': _randomScope?.name,
         }),
       ),
     );
@@ -249,6 +346,9 @@ extension MusicListeningActions on MusicController {
         _prefs.getString(_accountKey('playback_queue_v1')) ?? '{}',
       );
       playback.queue.restore(saved);
+      _randomScope = MusicRandomScope.values
+          .where((s) => s.name == saved['randomScope'])
+          .firstOrNull;
       playback.restoredPosition = saved is Map
           ? Duration(milliseconds: (saved['positionMs'] as num? ?? 0).toInt())
           : Duration.zero;
@@ -269,6 +369,8 @@ extension MusicListeningActions on MusicController {
 
   Future<void> _performAccountSwitch(String account) async {
     if (_accountUid == account) return;
+    streamRandomTracks = const [];
+    _randomScope = null;
     final generation = ++_accountGeneration;
     await playback.stop();
     downloads

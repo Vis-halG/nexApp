@@ -27,8 +27,10 @@ import 'music_catalog.dart';
 import 'music_social.dart';
 import 'listening_player.dart';
 import 'music_downloads.dart';
+import 'music_transfer.dart';
 import 'music_lyrics.dart';
 import 'music_device.dart';
+import 'music_artists.dart';
 
 part 'listening_controller.dart';
 
@@ -351,6 +353,13 @@ class MusicController extends ChangeNotifier {
       throw ArgumentError.value(_musicProviders, 'musicProviders');
     }
     activeProviderId = _musicProviders.first.id;
+    if (!kIsWeb) {
+      _uploadNetwork = Connectivity().onConnectivityChanged.listen((_) {
+        if (uploadsWaiting && !uploadsPaused && !_uploadsDisposed) {
+          unawaited(resumeUploads());
+        }
+      }, onError: (Object _) {});
+    }
     _initPersonal(_auth?.currentUser?.uid ?? 'guest');
     signedIn = _auth?.currentUser != null;
     pushEnabled = _prefs.getBool('pushEnabled') ?? true;
@@ -518,6 +527,15 @@ class MusicController extends ChangeNotifier {
   /// Current or most recent batch of public uploads.
   List<UploadItem> uploads = const [];
   bool _drainingUploads = false;
+  bool _uploadDrainAgain = false, _uploadsDisposed = false;
+  StreamSubscription<List<ConnectivityResult>>? _uploadNetwork;
+  late final TransferRecovery _uploadRecovery = TransferRecovery(
+    onRetry: () {
+      if (!_uploadsDisposed && !uploadsPaused) unawaited(resumeUploads());
+    },
+  );
+  bool get uploadsWaiting => _uploadRecovery.waiting;
+  String? get uploadWaitMessage => _uploadRecovery.message;
 
   /// True while the listener has paused the batch. Nothing new starts, and a
   /// file that was halfway starts again from the beginning on resume, because
@@ -531,6 +549,8 @@ class MusicController extends ChangeNotifier {
   final Map<UploadItem, UploadStatus> _stopTo = {};
 
   List<Song> queue = const [];
+  List<Song> streamRandomTracks = const [];
+  MusicRandomScope? _randomScope;
   List<MediaFolder> mediaFolders = const [
     MediaFolder(id: 'local-imports', name: 'My Imports'),
   ];
@@ -855,7 +875,11 @@ class MusicController extends ChangeNotifier {
       return resolved.url;
     }
     final local = playableUrl(song);
-    if (!song.isProvider || local.isNotEmpty) return local;
+    if (!song.isProvider ||
+        local.startsWith('file:') ||
+        (!downloading && local.isNotEmpty)) {
+      return local;
+    }
     var qualityKey = downloading ? 'downloadQuality' : 'wifiQuality';
     if (!downloading) {
       try {
@@ -880,7 +904,9 @@ class MusicController extends ChangeNotifier {
           ) ==
           MusicQuality.low;
     }
-    return provider.resolveStreamUrl(song);
+    return provider.resolveStreamUrl(
+      downloading ? song.copyWith(url: '') : song,
+    );
   }
 
   Map<String, String> playbackHeadersFor(Song song) =>
@@ -975,12 +1001,16 @@ class MusicController extends ChangeNotifier {
   void _finishUploads() {
     if (uploads.isEmpty) return;
     final category = categoryName(uploads.first.categoryId);
-    if (uploadsPaused && uploading) {
+    if ((uploadsPaused || uploadsWaiting) && uploading) {
       unawaited(
         phone?.showDone(
           _uploadNotificationId,
-          title: 'Uploads paused',
-          text: '$uploadsFinished of ${uploads.length} done · $category',
+          title: uploadsWaiting
+              ? 'Uploads waiting for connection'
+              : 'Uploads paused',
+          text:
+              uploadWaitMessage ??
+              '$uploadsFinished of ${uploads.length} done · $category',
         ),
       );
       return;
@@ -1076,6 +1106,7 @@ class MusicController extends ChangeNotifier {
     Song song, {
     List<Song>? from,
     Duration? initialPosition,
+    MusicRandomScope? randomScope,
   }) async {
     if (song.isVideo) return;
     if (isStreamingLink(song.url)) {
@@ -1098,6 +1129,9 @@ class MusicController extends ChangeNotifier {
       );
       return;
     }
+    _randomScope =
+        randomScope ??
+        (from == null && current?.id == song.id ? _randomScope : null);
     await playback.play(
       song,
       from: from,
@@ -1663,6 +1697,7 @@ class MusicController extends ChangeNotifier {
         ..error = null;
     }
     _reportedUploads.clear();
+    _uploadRecovery.clear(reset: true);
     uploadsPaused = false;
     uploads = List.of(items);
     notifyListeners();
@@ -1670,7 +1705,6 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> retryFailedUploads() async {
-    if (uploading) return;
     for (final item in uploads) {
       if (item.status == UploadStatus.failed) {
         item
@@ -1680,6 +1714,10 @@ class MusicController extends ChangeNotifier {
       }
     }
     notifyListeners();
+    if (uploadsWaiting) {
+      await resumeUploads();
+      return;
+    }
     await _drainUploads();
   }
 
@@ -1688,13 +1726,18 @@ class MusicController extends ChangeNotifier {
   void pauseUploads() {
     if (!uploading || uploadsPaused) return;
     uploadsPaused = true;
+    _uploadRecovery.clear();
     _pullBack(UploadStatus.queued);
     notifyListeners();
   }
 
   Future<void> resumeUploads() async {
-    if (!uploadsPaused) return;
+    if (_uploadsDisposed || (!uploadsPaused && !uploadsWaiting)) return;
     uploadsPaused = false;
+    _uploadRecovery.clear();
+    for (final item in uploads) {
+      if (item.status == UploadStatus.queued) item.error = null;
+    }
     notifyListeners();
     await _drainUploads();
   }
@@ -1704,6 +1747,7 @@ class MusicController extends ChangeNotifier {
   void cancelUploads() {
     if (!uploading) return;
     uploadsPaused = false;
+    _uploadRecovery.clear(reset: true);
     for (final item in uploads) {
       if (item.status == UploadStatus.queued) {
         item.status = UploadStatus.cancelled;
@@ -1740,11 +1784,15 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> _drainUploads() async {
-    if (_drainingUploads) return;
+    if (_uploadsDisposed || uploadsPaused || uploadsWaiting) return;
+    if (_drainingUploads) {
+      _uploadDrainAgain = true;
+      return;
+    }
     _drainingUploads = true;
     Future<void> worker() async {
       while (true) {
-        if (uploadsPaused) return;
+        if (_uploadsDisposed || uploadsPaused || uploadsWaiting) return;
         UploadItem? next;
         for (final item in uploads) {
           if (item.status == UploadStatus.queued) {
@@ -1765,8 +1813,14 @@ class MusicController extends ChangeNotifier {
       // The upload screen and home banner show the summary inside the app;
       // the notification covers a phone that is in a pocket.
       _drainingUploads = false;
-      notifyListeners();
-      _finishUploads();
+      if (!_uploadsDisposed) {
+        notifyListeners();
+        _finishUploads();
+        if (_uploadDrainAgain && !uploadsPaused && !uploadsWaiting) {
+          _uploadDrainAgain = false;
+          scheduleMicrotask(() => unawaited(_drainUploads()));
+        }
+      }
     }
   }
 
@@ -1818,6 +1872,14 @@ class MusicController extends ChangeNotifier {
             ? await phone!.copyToCache(item.path, item.name)
             : item.path;
         try {
+          if (!item.artistRead && item.artist.isEmpty && phone != null) {
+            item.artistRead = true;
+            try {
+              item.artist = await phone
+                  .readMediaArtist(localPath)
+                  .timeout(const Duration(seconds: 5));
+            } catch (_) {}
+          }
           final result = await _sendToCloudinary(
             item,
             localPath,
@@ -1831,72 +1893,120 @@ class MusicController extends ChangeNotifier {
         }
       }
 
-      final reference = firestore.collection('songs').doc();
+      final reference = firestore.collection('songs').doc(item.catalogId);
+      item.catalogId = reference.id;
       final ownerName = _ownerName(user);
       final url = playbackUrlFor(item.uploadedUrl!);
-      await reference.set({
-        'title': title,
-        'kind': kind,
-        'categoryId': item.categoryId,
-        'url': url,
-        'publicId': item.uploadedPublicId,
-        'sizeBytes': item.sizeBytes,
-        'durationMs': item.durationMs,
-        'ownerUid': user.uid,
-        'ownerName': ownerName,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'deleted': false,
-      });
+      Map<String, dynamic>? existingRow;
+      await firestore
+          .runTransaction((transaction) async {
+            final existing = (await transaction.get(reference)).data();
+            existingRow = existing;
+            if (existing != null) {
+              if (existing['ownerUid'] != user.uid ||
+                  existing['publicId'] != item.uploadedPublicId) {
+                throw const _UploadFailure(
+                  'The saved upload does not match this file. Pick it again.',
+                );
+              }
+              return;
+            }
+            transaction.set(reference, {
+              'title': title,
+              'kind': kind,
+              'categoryId': item.categoryId,
+              'url': url,
+              'publicId': item.uploadedPublicId,
+              'sizeBytes': item.sizeBytes,
+              'durationMs': item.durationMs,
+              'ownerUid': user.uid,
+              'ownerName': ownerName,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'deleted': false,
+            });
+          })
+          .timeout(const Duration(seconds: 45));
+      if (_uploadsDisposed) return;
+      if (existingRow?['deleted'] == true) {
+        item
+          ..status = UploadStatus.skipped
+          ..progress = 1;
+        discardPicked(item);
+        return;
+      }
       _upsertSong(
-        Song(
-          id: reference.id,
-          title: title,
-          kind: kind,
-          url: url,
-          categoryId: item.categoryId,
-          ownerUid: user.uid,
-          ownerName: ownerName,
-          publicId: item.uploadedPublicId,
-          sizeBytes: item.sizeBytes,
-          createdAt: DateTime.now(),
-        ),
+        existingRow != null
+            ? _songFromRow(reference.id, existingRow!)
+            : Song(
+                id: reference.id,
+                title: title,
+                kind: kind,
+                url: url,
+                categoryId: item.categoryId,
+                ownerUid: user.uid,
+                ownerName: ownerName,
+                publicId: item.uploadedPublicId,
+                sizeBytes: item.sizeBytes,
+                durationMs: item.durationMs,
+                createdAt: DateTime.now(),
+              ),
       );
       item
-        ..title = title
+        ..title = existingRow?['title'] as String? ?? title
         ..status = UploadStatus.done
         ..progress = 1;
+      if (item.artist.isNotEmpty) {
+        setSongArtist(
+          songs.firstWhere((song) => song.id == reference.id),
+          item.artist,
+        );
+      }
+      _uploadRecovery.clear(reset: true);
       discardPicked(item);
-    } on _UploadFailure catch (error) {
-      item
-        ..status = UploadStatus.failed
-        ..error = error.message;
-    } on FirebaseException catch (error) {
-      item
-        ..status = UploadStatus.failed
-        ..error = _firebaseMessage(error, operation: 'Save');
-    } on TimeoutException {
-      item
-        ..status = UploadStatus.failed
-        ..error = 'The upload stalled. Try again.';
-    } on FormatException {
-      item
-        ..status = UploadStatus.failed
-        ..error = 'Unexpected reply from Cloudinary. Try again.';
-    } on FileSystemException catch (error) {
-      item
-        ..status = UploadStatus.failed
-        ..error = error is PathNotFoundException
-            ? 'The file is no longer on the phone. Pick it again.'
-            : 'Could not read the file: ${error.message}';
-    } on IOException catch (error) {
-      item
-        ..status = UploadStatus.failed
-        ..error = 'Network or file error: $error';
     } catch (error) {
-      // Pulling a request back can surface as any error; the stop below
-      // decides what the file becomes.
-      if (!_stopTo.containsKey(item)) rethrow;
+      if (!_stopTo.containsKey(item) && !_uploadsDisposed) {
+        final temporary =
+            isTemporaryTransferError(error) ||
+            (error is FirebaseException &&
+                {
+                  'unavailable',
+                  'deadline-exceeded',
+                  'resource-exhausted',
+                  'aborted',
+                }.contains(error.code));
+        if (temporary) {
+          if (!uploadsPaused) {
+            _uploadRecovery.wait(
+              error is FirebaseException
+                  ? TimeoutException('The catalogue could not be reached.')
+                  : error,
+            );
+          }
+          item
+            ..status = UploadStatus.queued
+            ..progress = 0
+            ..error = uploadsPaused
+                ? 'Uploads paused'
+                : _uploadRecovery.message;
+          _uploadClients[item]?.close(force: true);
+          _pullBack(UploadStatus.queued);
+        } else {
+          item
+            ..status = UploadStatus.failed
+            ..error = switch (error) {
+              _UploadFailure() => error.message,
+              FirebaseException() => _firebaseMessage(error, operation: 'Save'),
+              PathNotFoundException() =>
+                'The file is no longer on the phone. Pick it again.',
+              FileSystemException() =>
+                'Could not read the file: ${error.message}',
+              FormatException() =>
+                'Unexpected reply from Cloudinary. Try again.',
+              _ => transferErrorMessage(error),
+            };
+        }
+      }
     } finally {
       final stop = _stopTo.remove(item);
       if (stop != null && item.uploadedUrl == null) {
@@ -1906,7 +2016,7 @@ class MusicController extends ChangeNotifier {
           ..error = null;
         if (stop == UploadStatus.cancelled) discardPicked(item);
       }
-      notifyListeners();
+      if (!_uploadsDisposed) notifyListeners();
     }
   }
 
@@ -1957,6 +2067,7 @@ class MusicController extends ChangeNotifier {
       var reported = 0.0;
       await request.addStream(
         file.openRead().map((chunk) {
+          if (_uploadsDisposed) throw const _UploadFailure('Stopped.');
           sent += chunk.length;
           final fraction = sent / length;
           // Chunks arrive many times a second; repaint per 1% of progress.
@@ -1969,8 +2080,16 @@ class MusicController extends ChangeNotifier {
         }),
       );
       request.add(tail);
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 60),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .timeout(const Duration(seconds: 60))
+          .join();
+      if (TransferHttpException(response.statusCode).retryable) {
+        throw TransferHttpException(response.statusCode);
+      }
       final decoded = jsonDecode(body);
       final json = decoded is Map<String, dynamic>
           ? decoded
@@ -1996,7 +2115,7 @@ class MusicController extends ChangeNotifier {
         durationMs: seconds is num ? (seconds * 1000).round() : 0,
       );
     } finally {
-      _uploadClients.remove(item);
+      if (identical(_uploadClients[item], client)) _uploadClients.remove(item);
       client.close(force: true);
     }
   }
@@ -2029,6 +2148,7 @@ class MusicController extends ChangeNotifier {
     Song song, {
     required String title,
     required String categoryId,
+    String? artist,
   }) async {
     final cleanTitle = title.trim();
     final firestore = _firestore;
@@ -2062,6 +2182,7 @@ class MusicController extends ChangeNotifier {
         current = current!.copyWith(title: cleanTitle, categoryId: categoryId);
       }
       _scheduleCatalogSave();
+      if (artist != null) setSongArtist(song, artist);
       final activity = songEditActivity(
         oldTitle: song.title,
         newTitle: cleanTitle,
@@ -2114,6 +2235,15 @@ class MusicController extends ChangeNotifier {
   Future<void> downloadSong(Song song) async {
     try {
       await downloads.enqueue([song]);
+      final job = downloads.jobs[song.id];
+      announce(
+        downloads.waitingMessage ??
+            (downloads.paused
+                ? 'Downloads paused. Resume from Downloads.'
+                : job == null
+                ? 'This song is already on your device.'
+                : 'Download queued. View progress in Downloads.'),
+      );
     } catch (e) {
       announce('$e');
     }
@@ -2677,8 +2807,10 @@ class MusicController extends ChangeNotifier {
       categoryId: row['categoryId'] as String? ?? '',
       ownerUid: row['ownerUid'] as String? ?? '',
       ownerName: row['ownerName'] as String? ?? '',
+      artist: row['artist'] as String? ?? '',
       publicId: row['publicId'] as String?,
       sizeBytes: (row['sizeBytes'] as num?)?.toInt() ?? 0,
+      durationMs: (row['durationMs'] as num?)?.toInt() ?? 0,
       createdAt: (row['createdAt'] as Timestamp?)?.toDate(),
     );
   }
@@ -2789,6 +2921,12 @@ class MusicController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _uploadsDisposed = true;
+    _uploadRecovery.dispose();
+    unawaited(_uploadNetwork?.cancel());
+    for (final client in _uploadClients.values) {
+      client.close(force: true);
+    }
     _providerRequest++;
     for (final subscription in [..._subs, ..._catalogSubs]) {
       subscription.cancel();

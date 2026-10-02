@@ -330,6 +330,11 @@ class PhoneServices {
     }
   }
 
+  /// Reads an embedded artist tag from a local upload copy.
+  Future<String> readMediaArtist(String filePath) async =>
+      (await _call<String>('readMediaArtist', {'path': filePath}))?.trim() ??
+      '';
+
   /// Gives back the lasting read access taken when a file was chosen.
   Future<void> releaseUri(String uri) =>
       _call<void>('releaseUri', {'uri': uri});

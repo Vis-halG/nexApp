@@ -209,6 +209,8 @@ class UploadItem {
   String path, name;
   int sizeBytes;
   String title;
+  String artist = '';
+  bool artistRead = false;
 
   /// The picked file before trimming, kept so a trim can be redone or undone.
   ({String path, String name, int sizeBytes})? original;
@@ -257,6 +259,9 @@ class UploadItem {
   /// Set once the file reached Cloudinary, so a retry only repeats the
   /// Firestore write instead of uploading the file again.
   String? uploadedUrl, uploadedPublicId;
+
+  /// Reused after a timed-out catalogue write to avoid duplicate entries.
+  String? catalogId;
   int durationMs = 0;
 
   bool get finished =>
