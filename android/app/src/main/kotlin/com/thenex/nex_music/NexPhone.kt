@@ -101,6 +101,10 @@ object NexPhone {
                 copyInBackground(context, call.argument<String>("uri"), call.argument<String>("name"), result)
                 return
             }
+            "copyAudioToCache" -> {
+                copyInBackground(context, call.argument<String>("uri"), null, result, resolveName = true)
+                return
+            }
             "installApk" -> {
                 val path = call.argument<String>("path")
                 if (path.isNullOrEmpty()) {
@@ -206,14 +210,20 @@ object NexPhone {
     }
 
     /** Copies one chosen file into the cache right before it uploads. */
-    private fun copyInBackground(context: Context, uri: String?, name: String?, result: MethodChannel.Result) {
+    private fun copyInBackground(context: Context, uri: String?, name: String?, result: MethodChannel.Result, resolveName: Boolean = false) {
         if (uri == null) {
             result.error("NO_URI", "No file was given.", null)
             return
         }
         Thread {
             try {
-                val safeName = (name ?: "upload").replace(Regex("[\\\\/:*?\"<>|]"), " ").trim().ifEmpty { "upload" }
+                var actualName = if (resolveName) describe(context, Uri.parse(uri))["name"] as? String else name
+                if (resolveName && File(actualName ?: "").extension.isEmpty()) {
+                    val mime = context.contentResolver.getType(Uri.parse(uri))
+                    val extension = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                    if (!extension.isNullOrEmpty()) actualName = "${actualName ?: "song"}.$extension"
+                }
+                val safeName = (actualName ?: "upload").replace(Regex("[\\\\/:*?\"<>|]"), " ").trim().ifEmpty { "upload" }
                 val folder = File(context.cacheDir, "nexmusic_uploads/${System.nanoTime()}").apply { mkdirs() }
                 val target = File(folder, safeName)
                 val input = context.contentResolver.openInputStream(Uri.parse(uri))

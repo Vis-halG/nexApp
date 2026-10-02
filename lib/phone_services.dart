@@ -330,6 +330,17 @@ class PhoneServices {
     }
   }
 
+  /// Copies a device song while preserving its real audio file extension.
+  Future<File> copyAudioToCache(String uri) async {
+    final copied = await _channel.invokeMethod<String>('copyAudioToCache', {
+      'uri': uri,
+    });
+    if (copied == null) {
+      throw const FileSystemException('The device song could not be read.');
+    }
+    return File(copied);
+  }
+
   /// Reads an embedded artist tag from a local upload copy.
   Future<String> readMediaArtist(String filePath) async =>
       (await _call<String>('readMediaArtist', {'path': filePath}))?.trim() ??

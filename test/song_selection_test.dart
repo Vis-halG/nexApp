@@ -494,41 +494,153 @@ void main() {
   });
 
   testWidgets(
-    'sharing includes public links and only names for device and private songs',
+    'sharing sends all selected audio attachments with real bytes and preserves offline files',
     (tester) async {
       _phone(tester);
-      String? shared;
+      final directory = Directory.systemTemp.createTempSync('nex-file-share-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      Map? shared;
+      final attachments = <List<int>>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/path_provider'),
+            (_) async => directory.path,
+          );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/path_provider'),
+              null,
+            );
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('dev.fluttercommunity.plus/share'),
+              null,
+            );
+      });
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
             const MethodChannel('dev.fluttercommunity.plus/share'),
             (call) async {
-              shared = (call.arguments as Map)['text'] as String;
+              shared = call.arguments as Map;
+              for (final file in (shared!['paths'] as List).cast<String>()) {
+                attachments.add(await File(file).readAsBytes());
+              }
               return 'success';
             },
           );
       final music = await _music()
-        ..songs = [
-          _song('a'),
-          _song('local:file').copyWith(url: 'file:///private/device-song.mp3'),
-          _song(
-            'private-saved',
-          ).copyWith(url: 'https://example.test/private-token'),
-          _song('youtube').copyWith(providerId: 'ytmusic', sourceId: 'song-id'),
-        ];
+        ..songs = [_song('a'), _song('b')];
+      for (var index = 0; index < music.songs.length; index++) {
+        final file = File('${directory.path}/original-$index.mp3')
+          ..writeAsBytesSync([index, 7, 8]);
+        music.offlineSongs[music.songs[index].id] = file.path;
+      }
       await tester.pumpWidget(_app(music, _list()));
       await _selectAll(tester);
       await tester.tap(find.widgetWithText(TextButton, 'More'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Share selected songs'));
+      await tester.pump();
+      final selection = tester
+          .element(find.byType(SongTile).first)
+          .read<SongSelection>();
+      await tester.runAsync(() async {
+        for (var attempt = 0; attempt < 150 && selection.busy; attempt++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          await tester.pump();
+        }
+      });
       await tester.pumpAndSettle();
-      expect(shared, contains('Track a'));
-      expect(shared, contains('/share/track?data='));
-      expect(shared, contains('Track local:file'));
-      expect(shared, contains('Track private-saved'));
-      expect(shared, contains('https://music.youtube.com/watch?v=song-id'));
-      expect(shared, isNot(contains('private/device-song')));
-      expect(shared, isNot(contains('private-token')));
+      expect(shared, isNotNull);
+      expect(shared!['paths'], hasLength(2));
+      expect(shared!['mimeTypes'], ['audio/mpeg', 'audio/mpeg']);
+      expect(shared!['text'], isNull);
+      expect(attachments, [
+        [0, 7, 8],
+        [1, 7, 8],
+      ]);
+      expect(File('${directory.path}/original-0.mp3').readAsBytesSync(), [
+        0,
+        7,
+        8,
+      ]);
+      expect(File('${directory.path}/original-1.mp3').readAsBytesSync(), [
+        1,
+        7,
+        8,
+      ]);
+      expect(
+        (shared!['paths'] as List).every(
+          (file) => !File(file as String).existsSync(),
+        ),
+        true,
+      );
+      expect(selection.active, false);
       expect(tester.takeException(), isNull);
+      await _finish(tester, music);
+    },
+  );
+
+  testWidgets(
+    'failed audio preparation retains selection and never opens the share sheet',
+    (tester) async {
+      _phone(tester);
+      final directory = Directory.systemTemp.createTempSync(
+        'nex-file-share-fail-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      var shareCalls = 0;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (_) async => directory.path,
+      );
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/share'),
+        (_) async {
+          shareCalls++;
+          return 'success';
+        },
+      );
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/share'),
+          null,
+        );
+      });
+      final music = await _music()
+        ..songs = [_song('a').copyWith(url: 'device:missing')];
+      await tester.pumpWidget(_app(music, _list()));
+      await tester.longPress(find.text('Track a'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Share selected songs'));
+      await tester.pump();
+      final selection = tester
+          .element(find.byType(SongTile).first)
+          .read<SongSelection>();
+      await tester.runAsync(() async {
+        for (var attempt = 0; attempt < 100 && selection.busy; attempt++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          await tester.pump();
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(shareCalls, 0);
+      expect(selection.active, true);
+      expect(selection.busy, false);
+      expect(selection.selected.length, 1);
+      expect(
+        find.textContaining('not available on this device'),
+        findsOneWidget,
+      );
       await _finish(tester, music);
     },
   );

@@ -110,6 +110,8 @@ class MusicDownloads extends ChangeNotifier {
         status.contains(ConnectivityResult.ethernet);
   }
 
+  Future<bool> canDownloadOnCurrentNetwork() => _wifiCheck();
+
   Future<void> enqueue(Iterable<Song> songs) async {
     if (kIsWeb) {
       throw UnsupportedError(

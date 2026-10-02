@@ -131,6 +131,92 @@ class _SongSelectionBar extends StatefulWidget {
 }
 
 class _SongSelectionBarState extends State<_SongSelectionBar> {
+  SongFilePreparation? _sharePreparation;
+  String? _shareProgress;
+  double? _shareFraction;
+
+  @override
+  void dispose() {
+    _sharePreparation?.cancel();
+    super.dispose();
+  }
+
+  Future<void> shareAudio(MusicController music, List<Song> tracks) async {
+    final account = music.personal;
+    final songs = tracks.where((song) => !song.isVideo).toList();
+    final preparation = SongFilePreparation(
+      resolve: (song) => music.resolvedPlayableUrl(song, downloading: true),
+      headers: music.playbackHeadersFor,
+      maxBytes: account.settings.storageBudgetMb * 1024 * 1024,
+      copyContentUri: (uri, _) async {
+        final phone = music.phone;
+        if (phone == null) {
+          throw StateError('This device song could not be read.');
+        }
+        return phone.copyAudioToCache(uri);
+      },
+      extractAudio: (source) async {
+        if (defaultTargetPlatform != TargetPlatform.android) {
+          throw UnsupportedError(
+            'Sharing audio from this container is available on Android.',
+          );
+        }
+        final output =
+            await const MethodChannel(
+              'com.thenex.nexmusic/media_tools',
+            ).invokeMethod<String>('extractAndTrimAudio', {
+              'source': source.path,
+              'startMs': 0,
+              'endMs': 2147483647,
+            });
+        if (output == null) {
+          throw StateError('The audio could not be extracted.');
+        }
+        return File(output);
+      },
+      beforeDownload: () async {
+        if (account.settings.wifiOnly) {
+          final network = await music.downloads.canDownloadOnCurrentNetwork();
+          if (!network) {
+            throw StateError(
+              'Connect to Wi-Fi or turn off Wi-Fi-only downloads to share online audio.',
+            );
+          }
+        }
+      },
+      onProgress: (song, index, total, fraction) {
+        if (!mounted) return;
+        setState(() {
+          _shareProgress = 'Preparing audio ${index + 1}/$total: ${song.title}';
+          _shareFraction = fraction == null ? null : (index + fraction) / total;
+        });
+      },
+    );
+    _sharePreparation = preparation;
+    PreparedSongFiles? prepared;
+    try {
+      prepared = await preparation.prepare(songs);
+      if (!mounted || account != music.personal) return;
+      final render = context.findRenderObject();
+      final origin = render is RenderBox
+          ? render.localToGlobal(Offset.zero) & render.size
+          : const Rect.fromLTWH(0, 0, 1, 1);
+      setState(() => _shareProgress = 'Opening share sheet...');
+      await SharePlus.instance.share(
+        ShareParams(files: prepared.files, sharePositionOrigin: origin),
+      );
+    } finally {
+      await prepared?.dispose();
+      _sharePreparation = null;
+      if (mounted) {
+        setState(() {
+          _shareProgress = null;
+          _shareFraction = null;
+        });
+      }
+    }
+  }
+
   Future<void> run(
     Future<void> Function(MusicController, List<Song>) action,
   ) async {
@@ -142,6 +228,8 @@ class _SongSelectionBarState extends State<_SongSelectionBar> {
     try {
       await action(music, tracks);
       if (!selection.disposed) selection.close();
+    } on SongShareCancelled {
+      if (mounted) music.announce('Audio sharing cancelled');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -175,7 +263,10 @@ class _SongSelectionBarState extends State<_SongSelectionBar> {
         ('download', 'Download selected', Icons.download),
       if (!kIsWeb && tracks.any(music.isSongDownloaded))
         ('removeDownloads', 'Remove downloads', Icons.download_done),
-      ('share', 'Share selected songs', Icons.share_outlined),
+      if (tracks.any((s) => !s.isVideo))
+        ('share', 'Share selected songs', Icons.share_outlined)
+      else
+        ('shareVideos', 'Share selected video links', Icons.share_outlined),
       if (playlist != null && playlist.canEdit(account.uid))
         ('removePlaylist', 'Remove from playlist', Icons.playlist_remove),
     ];
@@ -223,6 +314,8 @@ class _SongSelectionBarState extends State<_SongSelectionBar> {
           }
           music.announce('Selected downloads removed');
         case 'share':
+          await shareAudio(music, tracks);
+        case 'shareVideos':
           await _shareMusic(
             context,
             tracks
@@ -266,7 +359,28 @@ class _SongSelectionBarState extends State<_SongSelectionBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (selection.busy) const LinearProgressIndicator(minHeight: 2),
+            if (selection.busy)
+              LinearProgressIndicator(minHeight: 2, value: _shareFraction),
+            if (_shareProgress != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _shareProgress!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_sharePreparation != null)
+                      TextButton(
+                        onPressed: _sharePreparation!.cancel,
+                        child: const Text('Cancel'),
+                      ),
+                  ],
+                ),
+              ),
             Row(
               children: [
                 action(

@@ -4,7 +4,7 @@ Flutter app for shared music, online songs and videos.
 Signed-in listeners can upload songs and videos into shared categories. Files
 are stored on Cloudinary; Firebase handles login and the shared listing.
 
-Version `0.4.2+8025` has four tabs: Home, Stream, Library and Profile. Home
+Version `0.4.3+8026` has four tabs: Home, Stream, Library and Profile. Home
 groups songs and videos into recently played/watched, liked, most played and
 never played collections. Stream combines JioSaavn and YouTube Music with
 Quick Picks, song radio and artist browsing. Available music videos open from
@@ -69,7 +69,10 @@ Personal playlists, queue editing/restore, repeat modes, sleep timer, lyrics/tra
 - Long press a song or card to select multiple songs. Select all or clear the
   selection, then play/shuffle selected audio, queue songs in order, add them
   to a new or existing playlist, like/unlike, download, remove downloads, or
-  share their names and public links. Editable playlists also support removing
+  share their audio files after downloading missing files (existing device and
+  offline files are reused). Android extracts audio from video containers before
+  sharing. Preparation shows progress, supports cancellation, and respects
+  Wi-Fi-only downloads and the storage limit. Editable playlists support removing
   selected tracks. Back exits selection; switching tabs, filters or accounts
   resets it. Playlist drag handles keep reordering separate from selection.
 - Google login through Firebase Authentication, plus guest access to device music and online discovery.

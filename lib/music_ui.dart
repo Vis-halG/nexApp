@@ -31,6 +31,7 @@ import 'music_catalog.dart';
 import 'music_artists.dart';
 import 'music_social.dart';
 import 'song_selection.dart';
+import 'music_sharing.dart';
 import 'phone_services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
