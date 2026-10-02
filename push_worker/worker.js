@@ -1,4 +1,4 @@
-// nexApp activity notifications, deployed as a Cloudflare Worker.
+// nexMusic activity notifications, deployed as a Cloudflare Worker.
 //
 // The app POSTs {"title", "body"} with the signed-in user's Firebase ID token
 // in the Authorization header. The Worker checks the token, then sends the
@@ -44,7 +44,7 @@ export default {
       const header = request.headers.get('Authorization') || '';
       senderUid = await verifyIdToken(header.replace(/^Bearer\s+/i, ''), projectId);
     } catch {
-      return reply({ error: 'Sign in to nexApp first.' }, 401);
+      return reply({ error: 'Sign in to nexMusic first.' }, 401);
     }
 
     if (url.pathname === '/recognize') return recognize(request, env, account, senderUid, url.searchParams.get('mode') === 'humming');
@@ -264,7 +264,7 @@ function sharePage(url) {
   }
   const deep = `nexmusic://share/${match[1]}${match[2] ? '/'+match[2] : ''}${url.search}`;
   const intent = `intent://share/${match[1]}${match[2] ? '/'+match[2] : ''}${url.search}#Intent;scheme=nexmusic;package=com.thenex.nex_music;end`;
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} ? nexApp</title><style>body{font:18px system-ui;background:#171120;color:#fff;max-width:520px;margin:12vh auto;padding:24px}a{display:block;background:#7c3aed;color:#fff;padding:16px;border-radius:16px;margin:16px 0;text-align:center;text-decoration:none}</style><h1>${escapeHtml(title)}</h1><p>Listen together on nexApp.</p><a href="${escapeHtml(intent)}">Open nexApp on Android</a><a href="${escapeHtml(deep)}">Open in the app</a><p>If the app is not installed, install nexApp and open this link again.</p></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store'}});
+  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} ? nexMusic</title><style>body{font:18px system-ui;background:#171120;color:#fff;max-width:520px;margin:12vh auto;padding:24px}a{display:block;background:#7c3aed;color:#fff;padding:16px;border-radius:16px;margin:16px 0;text-align:center;text-decoration:none}</style><h1>${escapeHtml(title)}</h1><p>Listen together on nexMusic.</p><a href="${escapeHtml(intent)}">Open nexMusic on Android</a><a href="${escapeHtml(deep)}">Open in the app</a><p>If the app is not installed, install nexMusic and open this link again.</p></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store'}});
 }
 async function recognize(request, env, account, uid, humming) {
   if (humming ? !(env.HUMMING_ENDPOINT && env.HUMMING_API_TOKEN) : !env.AUDD_API_TOKEN) return reply({error:humming ? 'Humming recognition is not configured yet.' : 'Song recognition service is not configured yet.'},503);

@@ -12,6 +12,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'branding_migration.dart';
 import 'firebase_options.dart';
 import 'music_controller.dart';
 import 'music_ui.dart';
@@ -20,7 +21,7 @@ import 'personal_music.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  ErrorWidget.builder = (_) => const _NexAppErrorView();
+  ErrorWidget.builder = (_) => const _NexMusicErrorView();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (!kIsWeb) {
     await GoogleSignIn.instance.initialize(
@@ -29,6 +30,7 @@ Future<void> main() async {
           : null,
     );
   }
+  await migrateWindowsBrandingSupportFiles();
   final preferences = await SharedPreferences.getInstance();
   final existingUser = FirebaseAuth.instance.currentUser;
   if (existingUser != null) {
@@ -44,7 +46,7 @@ Future<void> main() async {
           androidNotificationChannelId: 'com.thenex.nexmusic.playback',
           androidNotificationChannelName: 'Music playback',
           androidNotificationIcon: 'drawable/ic_notification',
-          notificationColor: NexApp.violet,
+          notificationColor: NexMusic.violet,
         ),
       );
     } catch (error) {
@@ -68,13 +70,13 @@ Future<void> main() async {
                 messaging: FirebaseMessaging.instance,
               ),
       ),
-      child: const NexApp(),
+      child: const NexMusic(),
     ),
   );
 }
 
-class _NexAppErrorView extends StatelessWidget {
-  const _NexAppErrorView();
+class _NexMusicErrorView extends StatelessWidget {
+  const _NexMusicErrorView();
 
   @override
   Widget build(BuildContext context) => const Directionality(
@@ -99,8 +101,8 @@ class _NexAppErrorView extends StatelessWidget {
   );
 }
 
-class NexApp extends StatelessWidget {
-  const NexApp({super.key});
+class NexMusic extends StatelessWidget {
+  const NexMusic({super.key});
 
   /// The only accent colour. Everything else stays monochrome.
   static const violet = Color(0xFF7C3AED);
@@ -299,12 +301,12 @@ class NexApp extends StatelessWidget {
           ),
         );
     return MaterialApp(
-      title: 'nexApp',
+      title: 'nexMusic',
       debugShowCheckedModeBanner: false,
       theme: theme(Brightness.light),
       darkTheme: theme(Brightness.dark),
       themeMode: appState.dark ? ThemeMode.dark : ThemeMode.light,
-      scrollBehavior: const NexAppScrollBehavior(),
+      scrollBehavior: const NexMusicScrollBehavior(),
       // Browsers turning shared links into audio run behind every page.
       builder: (context, child) =>
           SharedAudioHost(child: child ?? const SizedBox.shrink()),
@@ -315,8 +317,8 @@ class NexApp extends StatelessWidget {
 
 /// Keeps touch scrolling fluid while retaining mouse and trackpad dragging on
 /// the desktop/web builds.
-class NexAppScrollBehavior extends MaterialScrollBehavior {
-  const NexAppScrollBehavior();
+class NexMusicScrollBehavior extends MaterialScrollBehavior {
+  const NexMusicScrollBehavior();
 
   @override
   Set<PointerDeviceKind> get dragDevices => const {

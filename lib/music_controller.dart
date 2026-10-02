@@ -1024,7 +1024,7 @@ class MusicController extends ChangeNotifier {
     final title = switch ((done.length, failed)) {
       _ when cancelled > 0 && done.isEmpty => 'Uploads cancelled',
       _ when cancelled > 0 => '${done.length} uploaded, the rest cancelled',
-      (0, 0) => 'Already in nexApp',
+      (0, 0) => 'Already in nexMusic',
       (1, 0) => 'Upload finished',
       (final ok, 0) => '$ok uploads finished',
       (final ok, final bad) => '$ok uploaded, $bad failed',
@@ -1742,7 +1742,7 @@ class MusicController extends ChangeNotifier {
     await _drainUploads();
   }
 
-  /// Stops the batch for good. Songs already in nexApp stay; the rest are
+  /// Stops the batch for good. Songs already in nexMusic stay; the rest are
   /// not sent.
   void cancelUploads() {
     if (!uploading) return;

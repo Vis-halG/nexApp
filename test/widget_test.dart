@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/main.dart';
-import 'package:nex_app/music_controller.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_ui.dart';
+import 'package:nex_music/main.dart';
+import 'package:nex_music/music_controller.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -53,8 +53,8 @@ Widget _app(MusicController controller, {Widget? home}) =>
     ChangeNotifierProvider.value(
       value: controller,
       child: home == null
-          ? const NexApp()
-          : MaterialApp(theme: NexApp.theme(Brightness.light), home: home),
+          ? const NexMusic()
+          : MaterialApp(theme: NexMusic.theme(Brightness.light), home: home),
     );
 
 /// A page with the upload screen for a shared link one tap away, so the upload
@@ -126,7 +126,7 @@ void main() {
     await tester.pumpWidget(_app(controller));
     await tester.pump();
 
-    expect(find.text('nexApp'), findsOneWidget);
+    expect(find.text('nexMusic'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());

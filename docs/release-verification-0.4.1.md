@@ -1,4 +1,4 @@
-# nexApp 0.4.1 release verification
+# nexMusic 0.4.1 release verification
 
 Verified 2 October 2026 (Asia/Calcutta). Package `com.thenex.nex_music`, version `0.4.1`, build `8023`.
 
@@ -13,7 +13,7 @@ Verified 2 October 2026 (Asia/Calcutta). Package `com.thenex.nex_music`, version
 
 ## Local artifact
 
-- APK: `build/app/outputs/flutter-apk/nexApp-0.4.1-arm64.apk`.
+- APK: `build/app/outputs/flutter-apk/nexMusic-0.4.1-arm64.apk`.
 - Native release build passed: Android arm64, min SDK 24, target SDK 36.
 - Size: 20,426,476 bytes.
 - SHA-256: `ea3531dcbdad1d922d4b28e1f3ed5c4a490e224840fc8e1f89fc1eb09fd4e222`.

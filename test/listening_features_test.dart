@@ -2,18 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/listening_models.dart';
-import 'package:nex_app/media_library.dart';
-import 'package:nex_app/music_controller.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_lyrics.dart';
-import 'package:nex_app/music_longform.dart';
-import 'package:nex_app/music_downloads.dart';
-import 'package:nex_app/personal_music.dart';
-import 'package:nex_app/music_portability.dart';
-import 'package:nex_app/music_catalog.dart';
-import 'package:nex_app/music_provider.dart';
-import 'package:nex_app/listening_player.dart';
+import 'package:nex_music/listening_models.dart';
+import 'package:nex_music/media_library.dart';
+import 'package:nex_music/music_controller.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_lyrics.dart';
+import 'package:nex_music/music_longform.dart';
+import 'package:nex_music/music_downloads.dart';
+import 'package:nex_music/personal_music.dart';
+import 'package:nex_music/music_portability.dart';
+import 'package:nex_music/music_catalog.dart';
+import 'package:nex_music/music_provider.dart';
+import 'package:nex_music/listening_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -362,7 +362,15 @@ void main() {
         ownerUid: 'alice',
         tracks: [local, remote],
       );
-      final imported = importPlaylist(exportPlaylist(playlist), 'bob');
+      final exported = exportPlaylist(playlist);
+      expect(jsonDecode(exported)['format'], 'nexMusic-playlist');
+      final imported = importPlaylist(exported, 'bob');
+      final legacy = importPlaylist(
+        exported.replaceFirst('nexMusic-playlist', 'nexApp-playlist'),
+        'bob',
+      );
+      expect(legacy.name, 'Mix');
+      expect(legacy.tracks.length, 2);
       expect(imported.ownerUid, 'bob');
       expect(imported.id, isNot('p'));
       expect(imported.tracks.first.url, 'device:local:1');
@@ -508,7 +516,7 @@ class _HeaderProvider extends Fake implements MusicProvider {
   String get id => 'header';
   @override
   Map<String, String> playbackHeaders(Song song) => const {
-    'User-Agent': 'nexApp test',
+    'User-Agent': 'nexMusic test',
   };
 }
 

@@ -1,4 +1,4 @@
-# nexApp 0.4.0 music expansion
+# nexMusic 0.4.0 music expansion
 
 The app keeps the existing Firebase project (`nexmusic-25989`), Android package, Cloudinary uploads and Cloudflare Worker (`nexmusic-push`). Secrets are never bundled in the APK. The build does not publish itself or alter the live backend.
 
@@ -52,7 +52,7 @@ node --test test_backend/worker.test.mjs
 cd test_backend
 npm ci
 cd ..
-firebase emulators:exec --only firestore --project demo-nexapp "node --test test_backend/firestore.test.mjs"
+firebase emulators:exec --only firestore --project demo-nexmusic "node --test test_backend/firestore.test.mjs"
 flutter build apk --release --target-platform android-arm64
 ```
 

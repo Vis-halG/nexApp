@@ -4,7 +4,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File tool\small_apk\build.ps1 [-Output path]
 param(
-  [string]$Output = 'build\nexApp-arm64.apk',
+  [string]$Output = 'build\nexMusic-arm64.apk',
   [int]$Iterations = 15
 )
 

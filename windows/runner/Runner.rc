@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.thenex" "\0"
-            VALUE "FileDescription", "nexApp" "\0"
+            VALUE "FileDescription", "nexMusic" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "nexApp" "\0"
+            VALUE "InternalName", "nexMusic" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.thenex. All rights reserved." "\0"
-            VALUE "OriginalFilename", "nexApp.exe" "\0"
-            VALUE "ProductName", "nexApp" "\0"
+            VALUE "OriginalFilename", "nexMusic.exe" "\0"
+            VALUE "ProductName", "nexMusic" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

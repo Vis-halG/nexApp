@@ -30,6 +30,7 @@ import 'music_portability.dart';
 import 'music_catalog.dart';
 import 'music_artists.dart';
 import 'music_social.dart';
+import 'song_selection.dart';
 import 'phone_services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -42,6 +43,7 @@ part 'recognition_ui.dart';
 part 'device_ui.dart';
 part 'portability_ui.dart';
 part 'previews_ui.dart';
+part 'song_selection_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -91,6 +93,11 @@ Future<void> _openSong(
   Song song, {
   List<Song>? queue,
 }) async {
+  final selection = context.read<SongSelection?>();
+  if (selection != null && selection.active && queue != null) {
+    selection.toggle(song, queue);
+    return;
+  }
   final music = context.read<MusicController>();
   if (song.isVideo) {
     try {
@@ -264,12 +271,12 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: NexApp.violet.withValues(alpha: 0.15),
+                    color: NexMusic.violet.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.rocket_launch_rounded,
-                    color: NexApp.violet,
+                    color: NexMusic.violet,
                     size: 24,
                   ),
                 ),
@@ -349,7 +356,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: NexApp.violet,
+                      color: NexMusic.violet,
                     ),
                   ),
                 ],
@@ -360,8 +367,8 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                 child: LinearProgressIndicator(
                   value: _fraction > 0 ? _fraction : null,
                   minHeight: 6,
-                  color: NexApp.violet,
-                  backgroundColor: NexApp.violet.withValues(alpha: 0.15),
+                  color: NexMusic.violet,
+                  backgroundColor: NexMusic.violet.withValues(alpha: 0.15),
                 ),
               ),
               const SizedBox(height: 16),
@@ -372,7 +379,7 @@ class _UpdateSheetState extends State<_UpdateSheet> {
                 child: FilledButton.icon(
                   onPressed: _startUpdate,
                   style: FilledButton.styleFrom(
-                    backgroundColor: NexApp.violet,
+                    backgroundColor: NexMusic.violet,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -662,17 +669,17 @@ class _Thumb extends StatelessWidget {
     final fallback = Icon(
       icon,
       size: size * 0.46,
-      color: active ? NexApp.violet : scheme.onSurfaceVariant,
+      color: active ? NexMusic.violet : scheme.onSurfaceVariant,
     );
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: active
-            ? NexApp.violet.withValues(alpha: 0.12)
+            ? NexMusic.violet.withValues(alpha: 0.12)
             : scheme.surfaceContainer,
         borderRadius: BorderRadius.circular(size * 0.22),
-        border: active ? Border.all(color: NexApp.violet, width: 1.5) : null,
+        border: active ? Border.all(color: NexMusic.violet, width: 1.5) : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: imageUrl.isEmpty
@@ -825,7 +832,7 @@ class _NameDialogState extends State<_NameDialog> {
         child: const Text('Cancel'),
       ),
       TextButton(
-        style: TextButton.styleFrom(foregroundColor: NexApp.violet),
+        style: TextButton.styleFrom(foregroundColor: NexMusic.violet),
         onPressed: () => Navigator.pop(context, _controller.text),
         child: Text(widget.action),
       ),
@@ -879,7 +886,7 @@ class WelcomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(3),
                   child: ClipOval(
                     child: Image.asset(
-                      'assets/branding/nexapp-logo.png',
+                      'assets/branding/nexmusic-logo.png',
                       width: 56,
                       height: 56,
                     ),
@@ -888,7 +895,7 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               const Text(
-                'nexApp',
+                'nexMusic',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
@@ -1224,7 +1231,8 @@ class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
       _ => const _SpotifyHomeView(),
     };
 
-    return Scaffold(
+    return _SongSelectionScaffold(
+      key: ValueKey(_currentTabIndex),
       body: SafeArea(bottom: false, child: currentView),
       floatingActionButton: _currentTabIndex < 3
           ? FloatingActionButton(
@@ -1244,29 +1252,35 @@ class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
             },
             backgroundColor: Theme.of(context).colorScheme.surface,
             elevation: 8,
-            indicatorColor: NexApp.violet.withValues(alpha: 0.18),
+            indicatorColor: NexMusic.violet.withValues(alpha: 0.18),
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded, color: NexApp.violet),
+                selectedIcon: Icon(Icons.home_rounded, color: NexMusic.violet),
                 label: 'Home',
               ),
               NavigationDestination(
                 icon: Icon(Icons.stream_rounded),
-                selectedIcon: Icon(Icons.stream_rounded, color: NexApp.violet),
+                selectedIcon: Icon(
+                  Icons.stream_rounded,
+                  color: NexMusic.violet,
+                ),
                 label: 'Stream',
               ),
               NavigationDestination(
                 icon: Icon(Icons.library_music_outlined),
                 selectedIcon: Icon(
                   Icons.library_music_rounded,
-                  color: NexApp.violet,
+                  color: NexMusic.violet,
                 ),
                 label: 'Library',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded, color: NexApp.violet),
+                selectedIcon: Icon(
+                  Icons.person_rounded,
+                  color: NexMusic.violet,
+                ),
                 label: 'Profile',
               ),
             ],
@@ -1306,6 +1320,7 @@ class _SpotifySongCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selection = context.watch<SongSelection?>();
     final scheme = Theme.of(context).colorScheme;
     final isCurrent = context.select<MusicController, bool>(
       (m) => m.current?.id == song.id,
@@ -1317,7 +1332,7 @@ class _SpotifySongCard extends StatelessWidget {
     final card = InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => _openSong(context, song, queue: queue),
-      onLongPress: () => _songActions(context, song),
+      onLongPress: () => _selectSong(context, song, queue),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1351,46 +1366,57 @@ class _SpotifySongCard extends StatelessWidget {
               Positioned(
                 top: 4,
                 right: 4,
-                child: IconButton(
-                  tooltip: 'More',
-                  iconSize: 18,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 28,
-                    minHeight: 28,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.45),
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: const Icon(Icons.more_vert_rounded),
-                  onPressed: () => _songActions(context, song),
-                ),
-              ),
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: isCurrent ? NexApp.violet : const Color(0xFF1DB954),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                child: selection?.active == true
+                    ? Material(
+                        color: scheme.surfaceContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        child: _songCheckbox(context, song, queue),
+                      )
+                    : IconButton(
+                        tooltip: 'More',
+                        iconSize: 18,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.45),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.more_vert_rounded),
+                        onPressed: () => _songActions(context, song),
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 22,
+              ),
+              if (selection?.active != true)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isCurrent
+                          ? NexMusic.violet
+                          : const Color(0xFF1DB954),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1401,14 +1427,14 @@ class _SpotifySongCard extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              color: isCurrent ? NexApp.violet : scheme.onSurface,
+              color: isCurrent ? NexMusic.violet : scheme.onSurface,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             song.artist.isNotEmpty
                 ? song.artist
-                : (song.isProvider ? 'Online stream' : 'nexApp'),
+                : (song.isProvider ? 'Online stream' : 'nexMusic'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
@@ -1437,7 +1463,7 @@ class _SpotifySongCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            NexApp.violet.withValues(alpha: 0.35),
+            NexMusic.violet.withValues(alpha: 0.35),
             scheme.surfaceContainerHighest,
           ],
         ),
@@ -1446,7 +1472,7 @@ class _SpotifySongCard extends StatelessWidget {
         child: Icon(
           song.isVideo ? Icons.play_arrow_rounded : Icons.music_note_rounded,
           size: 38,
-          color: NexApp.violet.withValues(alpha: 0.7),
+          color: NexMusic.violet.withValues(alpha: 0.7),
         ),
       ),
     );
@@ -1485,8 +1511,8 @@ class _SpotifyQuickTile extends StatelessWidget {
                     gradient ??
                     LinearGradient(
                       colors: [
-                        NexApp.violet,
-                        NexApp.violet.withValues(alpha: 0.6),
+                        NexMusic.violet,
+                        NexMusic.violet.withValues(alpha: 0.6),
                       ],
                     ),
               ),
@@ -1511,13 +1537,13 @@ class _SpotifyQuickTile extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: NexApp.violet.withValues(alpha: 0.15),
+                  color: NexMusic.violet.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.play_arrow_rounded,
                   size: 18,
-                  color: NexApp.violet,
+                  color: NexMusic.violet,
                 ),
               ),
             ),
@@ -1593,7 +1619,7 @@ class _SpotifySection extends StatelessWidget {
                   child: const Text(
                     'Show all',
                     style: TextStyle(
-                      color: NexApp.violet,
+                      color: NexMusic.violet,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
@@ -1699,13 +1725,19 @@ class _SpotifyHomeViewState extends State<_SpotifyHomeView> {
                   _Pill(
                     label: 'All',
                     selected: _selectedCategory == null,
-                    onTap: () => setState(() => _selectedCategory = null),
+                    onTap: () {
+                      context.read<SongSelection?>()?.close();
+                      setState(() => _selectedCategory = null);
+                    },
                   ),
                   for (final cat in music.categories)
                     _Pill(
                       label: cat.name,
                       selected: _selectedCategory == cat.id,
-                      onTap: () => setState(() => _selectedCategory = cat.id),
+                      onTap: () {
+                        context.read<SongSelection?>()?.close();
+                        setState(() => _selectedCategory = cat.id);
+                      },
                       onLongPress: () => _categoryActions(context, cat),
                     ),
                   _Pill(
@@ -1999,7 +2031,7 @@ class _SpotifyHomeViewState extends State<_SpotifyHomeView> {
                                 height: 28,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: NexApp.violet,
+                                  color: NexMusic.violet,
                                 ),
                               ),
                               SizedBox(height: 12),
@@ -2263,7 +2295,7 @@ class _SpotifyStreamViewState extends State<_SpotifyStreamView> {
                 children: [
                   const Icon(
                     Icons.stream_rounded,
-                    color: NexApp.violet,
+                    color: NexMusic.violet,
                     size: 30,
                   ),
                   const SizedBox(width: 12),
@@ -2484,6 +2516,7 @@ class _QuickPickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selection = context.watch<SongSelection?>();
     final scheme = Theme.of(context).colorScheme;
     final isCurrent = context.select<MusicController, bool>(
       (m) => m.current?.id == song.id,
@@ -2495,6 +2528,7 @@ class _QuickPickTile extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: () => _openSong(context, song, queue: queue),
+      onLongPress: () => _selectSong(context, song, queue),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: Row(
@@ -2513,7 +2547,7 @@ class _QuickPickTile extends StatelessWidget {
                           song.isVideo
                               ? Icons.play_arrow_rounded
                               : Icons.music_note_rounded,
-                          color: NexApp.violet,
+                          color: NexMusic.violet,
                           size: 20,
                         ),
                       )
@@ -2521,7 +2555,7 @@ class _QuickPickTile extends StatelessWidget {
                         song.isVideo
                             ? Icons.play_arrow_rounded
                             : Icons.music_note_rounded,
-                        color: NexApp.violet,
+                        color: NexMusic.violet,
                         size: 20,
                       ),
               ),
@@ -2539,7 +2573,7 @@ class _QuickPickTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: isCurrent ? NexApp.violet : scheme.onSurface,
+                      color: isCurrent ? NexMusic.violet : scheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -2555,7 +2589,7 @@ class _QuickPickTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (isCurrent)
+            if (isCurrent && selection?.active != true)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: Icon(
@@ -2563,17 +2597,20 @@ class _QuickPickTile extends StatelessWidget {
                       ? Icons.graphic_eq_rounded
                       : Icons.play_arrow_rounded,
                   size: 18,
-                  color: NexApp.violet,
+                  color: NexMusic.violet,
                 ),
               ),
-            IconButton(
-              icon: const Icon(Icons.more_vert_rounded, size: 18),
-              tooltip: 'More',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              onPressed: () => _songActions(context, song),
-            ),
+            if (selection?.active == true)
+              _songCheckbox(context, song, queue)
+            else
+              IconButton(
+                icon: const Icon(Icons.more_vert_rounded, size: 18),
+                tooltip: 'More',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () => _songActions(context, song),
+              ),
           ],
         ),
       ),
@@ -2586,7 +2623,7 @@ class SearchScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return _SongSelectionScaffold(
       appBar: AppBar(title: const Text('Search'), elevation: 0),
       body: const SafeArea(child: _SpotifyBrowseView()),
     );
@@ -2623,6 +2660,7 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
                 s.artist.toLowerCase().contains(query) ||
                 music.categoryName(s.categoryId).toLowerCase().contains(query);
           }).toList();
+    final selectableResults = [...searchResults, ...music.providerSongs];
 
     return Column(
       children: [
@@ -2632,6 +2670,7 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
             controller: _searchController,
             textInputAction: TextInputAction.search,
             onChanged: (val) {
+              context.read<SongSelection?>()?.close();
               setState(() {});
               _debounce?.cancel();
               if (val.trim().isNotEmpty && music.musicProviders.isNotEmpty) {
@@ -2648,6 +2687,7 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
                   ? IconButton(
                       icon: const Icon(Icons.clear_rounded),
                       onPressed: () {
+                        context.read<SongSelection?>()?.close();
                         _searchController.clear();
                         _debounce?.cancel();
                         music.searchAllMusic('');
@@ -2682,7 +2722,11 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
                               ),
                             ),
                             for (final song in searchResults)
-                              SongTile(song: song, queue: searchResults),
+                              SongTile(
+                                song: song,
+                                queue: searchResults,
+                                selectionSongs: selectableResults,
+                              ),
                           ],
                           if (music.providerSongs.isNotEmpty) ...[
                             const Padding(
@@ -2696,7 +2740,11 @@ class _SpotifyBrowseViewState extends State<_SpotifyBrowseView> {
                               ),
                             ),
                             for (final song in music.providerSongs)
-                              SongTile(song: song, queue: music.providerSongs),
+                              SongTile(
+                                song: song,
+                                queue: music.providerSongs,
+                                selectionSongs: selectableResults,
+                              ),
                           ],
                         ],
                       ))
@@ -2994,7 +3042,7 @@ class _SpotifyLibraryView extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.queue_music_rounded,
-                color: NexApp.violet,
+                color: NexMusic.violet,
                 size: 26,
               ),
             ),
@@ -3025,12 +3073,21 @@ class _SpotifyLibraryView extends StatelessWidget {
 }
 
 class SongTile extends StatelessWidget {
-  const SongTile({super.key, required this.song, required this.queue});
+  const SongTile({
+    super.key,
+    required this.song,
+    required this.queue,
+    this.trailing,
+    this.selectionSongs,
+  });
   final Song song;
   final List<Song> queue;
+  final Widget? trailing;
+  final List<Song>? selectionSongs;
 
   @override
   Widget build(BuildContext context) {
+    final selection = context.watch<SongSelection?>();
     final tile = context
         .select<
           MusicController,
@@ -3073,6 +3130,8 @@ class SongTile extends StatelessWidget {
         'Offline',
     ];
     return ListTile(
+      selected: selection?.contains(song) ?? false,
+      selectedTileColor: NexMusic.violet.withValues(alpha: 0.12),
       contentPadding: const EdgeInsets.only(left: 20, right: 8),
       leading: _Thumb(
         active: tile.active,
@@ -3089,7 +3148,7 @@ class SongTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w500,
-          color: tile.active ? NexApp.violet : null,
+          color: tile.active ? NexMusic.violet : null,
         ),
       ),
       subtitle: Text(
@@ -3098,12 +3157,16 @@ class SongTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: _muted(context), fontSize: 12),
       ),
-      trailing: IconButton(
-        tooltip: 'More',
-        onPressed: () => _songActions(context, song),
-        icon: Icon(Icons.more_vert_rounded, color: _muted(context)),
-      ),
+      trailing: selection?.active == true
+          ? _songCheckbox(context, song, selectionSongs ?? queue)
+          : trailing ??
+                IconButton(
+                  tooltip: 'More',
+                  onPressed: () => _songActions(context, song),
+                  icon: Icon(Icons.more_vert_rounded, color: _muted(context)),
+                ),
       onTap: () => _openSong(context, song, queue: queue),
+      onLongPress: () => _selectSong(context, song, selectionSongs ?? queue),
     );
   }
 }
@@ -3122,7 +3185,7 @@ Future<void> _songActions(BuildContext context, Song song) {
     (sheetContext) => [
       ..._listeningSongActions(context, sheetContext, song),
       ListTile(
-        leading: const Icon(Icons.radio_rounded, color: NexApp.violet),
+        leading: const Icon(Icons.radio_rounded, color: NexMusic.violet),
         title: const Text('Start Radio'),
         subtitle: const Text('Play similar recommended tracks like this'),
         onTap: () {
@@ -3378,7 +3441,7 @@ class UploadScreen extends StatefulWidget {
   });
   final List<String> initialPaths;
 
-  /// A YouTube link shared into nexApp. The screen opens at once while a
+  /// A YouTube link shared into nexMusic. The screen opens at once while a
   /// browser out of sight turns the link into audio, so the title and category
   /// can be filled in, and Upload pressed, before the audio arrives.
   final String? sharedLink;
@@ -3632,7 +3695,7 @@ class _UploadScreenState extends State<UploadScreen> {
     final confirmed = await _confirm(
       context,
       title: 'Stop uploading?',
-      body: 'Songs already uploaded stay in nexApp. The rest are not sent.',
+      body: 'Songs already uploaded stay in nexMusic. The rest are not sent.',
       action: 'Stop',
     );
     if (confirmed) music.cancelUploads();
@@ -3781,7 +3844,7 @@ class _UploadScreenState extends State<UploadScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Everyone signed in to nexApp can play your uploads.',
+            'Everyone signed in to nexMusic can play your uploads.',
             textAlign: TextAlign.center,
             style: TextStyle(color: muted, fontSize: 12),
           ),
@@ -3799,7 +3862,7 @@ class _UploadScreenState extends State<UploadScreen> {
     final summary = [
       '${count(UploadStatus.done)} uploaded',
       if (count(UploadStatus.skipped) > 0)
-        '${count(UploadStatus.skipped)} already in nexApp',
+        '${count(UploadStatus.skipped)} already in nexMusic',
       if (failed > 0) '$failed failed',
       if (count(UploadStatus.cancelled) > 0)
         '${count(UploadStatus.cancelled)} cancelled',
@@ -3842,7 +3905,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             ? music.uploadWaitMessage!
                             : paused
                             ? 'Paused. A song that was halfway starts again when you resume.'
-                            : 'Keep nexApp open until the uploads finish.'
+                            : 'Keep nexMusic open until the uploads finish.'
                       : summary,
                   style: TextStyle(color: _muted(context), fontSize: 12),
                 ),
@@ -4119,7 +4182,7 @@ class _PickedRow extends StatelessWidget {
               ? '${_time(start)}–${_time(end)}'
               : _fileSize(item.sizeBytes),
           style: TextStyle(
-            color: item.trimmed ? NexApp.violet : _muted(context),
+            color: item.trimmed ? NexMusic.violet : _muted(context),
             fontSize: 12,
           ),
         ),
@@ -4131,7 +4194,7 @@ class _PickedRow extends StatelessWidget {
             icon: Icon(
               Icons.content_cut_rounded,
               size: 18,
-              color: item.trimmed ? NexApp.violet : null,
+              color: item.trimmed ? NexMusic.violet : null,
             ),
           ),
         IconButton(
@@ -4202,7 +4265,7 @@ class _UploadRow extends StatelessWidget {
         '${(item.progress * 100).round()}%',
       ),
       UploadStatus.done => (
-        const Icon(Icons.check_circle_rounded, color: NexApp.violet),
+        const Icon(Icons.check_circle_rounded, color: NexMusic.violet),
         'Uploaded',
       ),
       UploadStatus.skipped => (
@@ -4210,7 +4273,7 @@ class _UploadRow extends StatelessWidget {
           Icons.remove_circle_outline_rounded,
           color: scheme.onSurfaceVariant,
         ),
-        'Already in nexApp',
+        'Already in nexMusic',
       ),
       UploadStatus.failed => (
         Icon(Icons.error_outline_rounded, color: scheme.error),
@@ -4461,7 +4524,7 @@ class _TrimScreenState extends State<TrimScreen> {
                   tooltip: _playing ? 'Pause' : 'Play selection',
                   iconSize: 36,
                   style: IconButton.styleFrom(
-                    backgroundColor: NexApp.violet,
+                    backgroundColor: NexMusic.violet,
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _saving ? null : _togglePlay,
@@ -4707,7 +4770,7 @@ class MiniPlayer extends StatelessWidget {
                               ? Icons.favorite_rounded
                               : Icons.favorite_border_rounded,
                           color: isLiked
-                              ? NexApp.violet
+                              ? NexMusic.violet
                               : scheme.onSurfaceVariant,
                         ),
                       ),
@@ -4719,7 +4782,7 @@ class MiniPlayer extends StatelessWidget {
                         onPressed: () => _openSongVideo(context, song),
                         icon: const Icon(
                           Icons.smart_display_rounded,
-                          color: NexApp.violet,
+                          color: NexMusic.violet,
                         ),
                       ),
                     IconButton(
@@ -4735,7 +4798,7 @@ class MiniPlayer extends StatelessWidget {
                               state.playing
                                   ? Icons.pause_circle_filled_rounded
                                   : Icons.play_circle_filled_rounded,
-                              color: NexApp.violet,
+                              color: NexMusic.violet,
                             ),
                     ),
                   ],
@@ -4754,7 +4817,7 @@ class MiniPlayer extends StatelessWidget {
                     backgroundColor: scheme.outlineVariant.withValues(
                       alpha: 0.3,
                     ),
-                    valueColor: const AlwaysStoppedAnimation(NexApp.violet),
+                    valueColor: const AlwaysStoppedAnimation(NexMusic.violet),
                   );
                 },
               ),
@@ -4851,12 +4914,12 @@ class NowPlayingScreen extends StatelessWidget {
                 icon: const Icon(
                   Icons.smart_display_rounded,
                   size: 20,
-                  color: NexApp.violet,
+                  color: NexMusic.violet,
                 ),
                 label: const Text(
                   'Video',
                   style: TextStyle(
-                    color: NexApp.violet,
+                    color: NexMusic.violet,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -4907,10 +4970,10 @@ class NowPlayingScreen extends StatelessWidget {
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                               style: FilledButton.styleFrom(
-                                backgroundColor: NexApp.violet.withValues(
+                                backgroundColor: NexMusic.violet.withValues(
                                   alpha: 0.15,
                                 ),
-                                foregroundColor: NexApp.violet,
+                                foregroundColor: NexMusic.violet,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 20,
                                   vertical: 10,
@@ -4918,7 +4981,7 @@ class NowPlayingScreen extends StatelessWidget {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24),
                                   side: const BorderSide(
-                                    color: NexApp.violet,
+                                    color: NexMusic.violet,
                                     width: 1.2,
                                   ),
                                 ),
@@ -4960,7 +5023,7 @@ class NowPlayingScreen extends StatelessWidget {
                                     state.liked
                                         ? Icons.favorite_rounded
                                         : Icons.favorite_border_rounded,
-                                    color: state.liked ? NexApp.violet : null,
+                                    color: state.liked ? NexMusic.violet : null,
                                   ),
                                 ),
                             ],
@@ -5023,7 +5086,9 @@ class NowPlayingScreen extends StatelessWidget {
                                 onPressed: music.toggleShuffle,
                                 icon: Icon(
                                   Icons.shuffle_rounded,
-                                  color: state.shuffle ? NexApp.violet : muted,
+                                  color: state.shuffle
+                                      ? NexMusic.violet
+                                      : muted,
                                 ),
                               ),
                               IconButton(
@@ -5038,7 +5103,7 @@ class NowPlayingScreen extends StatelessWidget {
                                   tooltip: state.playing ? 'Pause' : 'Play',
                                   iconSize: 32,
                                   style: IconButton.styleFrom(
-                                    backgroundColor: NexApp.violet,
+                                    backgroundColor: NexMusic.violet,
                                     foregroundColor: Colors.white,
                                   ),
                                   onPressed: music.togglePlay,
@@ -5070,7 +5135,7 @@ class NowPlayingScreen extends StatelessWidget {
                                   music.playback.queue.repeat == MusicRepeat.one
                                       ? Icons.repeat_one_rounded
                                       : Icons.repeat_rounded,
-                                  color: state.repeat ? NexApp.violet : muted,
+                                  color: state.repeat ? NexMusic.violet : muted,
                                 ),
                               ),
                             ],
@@ -5238,7 +5303,7 @@ class _VideoScreenState extends State<VideoScreen> {
                         allowScrubbing: true,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         colors: const VideoProgressColors(
-                          playedColor: NexApp.violet,
+                          playedColor: NexMusic.violet,
                           bufferedColor: Colors.white24,
                           backgroundColor: Colors.white12,
                         ),
@@ -5434,7 +5499,7 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 24),
         Center(
           child: Text(
-            'nexApp v${music.installedVersion}',
+            'nexMusic v${music.installedVersion}',
             style: TextStyle(color: _muted(context), fontSize: 12),
           ),
         ),
@@ -5477,7 +5542,7 @@ Future<void> _manualCheckAppUpdate(
     } else {
       scaffold.showSnackBar(
         SnackBar(
-          content: Text('nexApp is up to date (v${music.installedVersion})!'),
+          content: Text('nexMusic is up to date (v${music.installedVersion})!'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -5506,7 +5571,8 @@ class SongListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final songs = context.select<MusicController, List<Song>>(select);
-    return Scaffold(
+    return _SongSelectionScaffold(
+      songs: songs,
       appBar: AppBar(title: Text(title)),
       body: songs.isEmpty
           ? _EmptyState(
@@ -6395,7 +6461,7 @@ class SharedAudioJob extends ChangeNotifier {
     final name = _fileName(path);
     final size = file.existsSync() ? file.lengthSync() : 0;
     if (uploadKindFor(name) == null || size == 0 || size >= maxUploadBytes) {
-      error = 'The converter sent a file nexApp cannot upload.';
+      error = 'The converter sent a file nexMusic cannot upload.';
       _music.announce('A shared song could not be uploaded. $error');
       discardTemporaryCopy(path);
       return;
@@ -6481,7 +6547,7 @@ class NexBrowserScreen extends StatefulWidget {
   /// opening another upload screen.
   final SharedAudioJob? job;
 
-  /// Link shared into nexApp, offered as a one-tap paste on whichever site
+  /// Link shared into nexMusic, offered as a one-tap paste on whichever site
   /// the listener opens.
   final String pasteLink;
 
@@ -6637,10 +6703,10 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
               if (request.isMainFrame &&
                   (uri?.scheme == 'blob' || uri?.scheme == 'data')) {
                 widget.job?.fail(
-                  'The converter builds its file in a way nexApp cannot capture.',
+                  'The converter builds its file in a way nexMusic cannot capture.',
                 );
                 _snack(
-                  'This site builds its download inside the page, which nexApp cannot capture. Try another site.',
+                  'This site builds its download inside the page, which nexMusic cannot capture. Try another site.',
                 );
               }
               return NavigationDecision.prevent;
@@ -6800,7 +6866,7 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
       <h1>NexBrowser Pro</h1>
     </div>
   </div>
-  <p>Search freely, choose any website to click, or convert online media into nexApp.</p>
+  <p>Search freely, choose any website to click, or convert online media into nexMusic.</p>
   <div class="grid">
     <a class="card" href="https://www.google.com">
       <div class="icon c-ggl">🔍</div>
@@ -6954,7 +7020,7 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
       _fileTaken = true;
       _progress = 1;
     });
-    _snack('Downloading for nexApp…');
+    _snack('Downloading for nexMusic…');
     _userAgent ??= await _readUserAgent();
     final result = await downloadBrowserMedia(
       url,
@@ -7602,12 +7668,12 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: NexApp.violet.withValues(alpha: 0.15),
+                        color: NexMusic.violet.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.tune_rounded,
-                        color: NexApp.violet,
+                        color: NexMusic.violet,
                         size: 22,
                       ),
                     ),
@@ -7793,11 +7859,11 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(
                     Icons.file_download_outlined,
-                    color: NexApp.violet,
+                    color: NexMusic.violet,
                   ),
                   title: const Text('Capture Media from this page'),
                   subtitle: const Text(
-                    'Detect audio/video stream and save to nexApp',
+                    'Detect audio/video stream and save to nexMusic',
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -7970,7 +8036,7 @@ class _NexBrowserScreenState extends State<NexBrowserScreen> {
                 child: LinearProgressIndicator(
                   value: _progress / 100,
                   minHeight: 2.5,
-                  color: NexApp.violet,
+                  color: NexMusic.violet,
                 ),
               )
             : null,

@@ -119,7 +119,7 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
     body: ListView(
       children: [
         const SizedBox(height: 36),
-        const Icon(Icons.music_note, size: 80, color: NexApp.violet),
+        const Icon(Icons.music_note, size: 80, color: NexMusic.violet),
         SwitchListTile(
           title: const Text('Hum a melody'),
           value: humming,

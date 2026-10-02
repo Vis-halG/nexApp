@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_provider.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_provider.dart';
 
 /// Live check: for each provider, loads featured + search results, resolves
 /// stream URLs and reads byte ranges at the start, middle and end of each

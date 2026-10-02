@@ -151,14 +151,26 @@ class MediaLibrary extends ChangeNotifier {
   }
 
   void setSongLiked(Song song, bool liked) {
-    if (song.isPrivate) return;
-    rememberSongs([song]);
-    _items['song:${song.id}']!.liked = liked;
-    if (liked) {
-      _legacyLikes.add(song.id);
-    } else {
-      _legacyLikes.remove(song.id);
+    setSongsLiked([song], liked);
+  }
+
+  void setSongsLiked(Iterable<Song> songs, bool liked) {
+    for (final song in songs.where((s) => !s.isPrivate)) {
+      final item = _items.putIfAbsent(
+        'song:${song.id}',
+        () =>
+            LibraryMedia.song(song)
+              ..playedBefore = _legacyRecent.contains(song.id),
+      );
+      item.song = song;
+      item.liked = liked;
+      if (liked) {
+        _legacyLikes.add(song.id);
+      } else {
+        _legacyLikes.remove(song.id);
+      }
     }
+    _trimDiscovery();
     _changed();
   }
 

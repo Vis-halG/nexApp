@@ -344,7 +344,7 @@ Widget _playlistCover(String cover, {double size = 48}) => Container(
   width: size,
   height: size,
   decoration: BoxDecoration(
-    color: NexApp.violet.withValues(alpha: 0.15),
+    color: NexMusic.violet.withValues(alpha: 0.15),
     borderRadius: BorderRadius.circular(10),
   ),
   alignment: Alignment.center,
@@ -385,7 +385,9 @@ class PlaylistScreen extends StatelessWidget {
       );
     }
     final edit = p.canEdit(music.personal.uid);
-    return Scaffold(
+    return _SongSelectionScaffold(
+      songs: p.tracks,
+      playlistId: p.id,
       appBar: AppBar(
         title: Text(p.name),
         actions: [
@@ -479,7 +481,7 @@ class PlaylistScreen extends StatelessWidget {
                     _featureTask(context, () async {
                       final folder = await getTemporaryDirectory();
                       final file = File(
-                        '${folder.path}/nexApp-playlist-${p.id}.json',
+                        '${folder.path}/nexMusic-playlist-${p.id}.json',
                       );
                       await file.writeAsString(exportPlaylist(p));
                       if (context.mounted) {
@@ -496,7 +498,7 @@ class PlaylistScreen extends StatelessWidget {
                     _featureTask(context, () async {
                       final dir = await getTemporaryDirectory();
                       final file = await File(
-                        '${dir.path}/nexApp-${p.id}.csv',
+                        '${dir.path}/nexMusic-${p.id}.csv',
                       ).writeAsString(exportPlaylistCsv(p));
                       if (context.mounted) {
                         await _shareMusic(context, p.name, file: file.path);
@@ -668,7 +670,7 @@ class PlaylistScreen extends StatelessWidget {
                   )
                 : ReorderableListView.builder(
                     itemCount: p.tracks.length,
-                    buildDefaultDragHandles: edit,
+                    buildDefaultDragHandles: false,
                     onReorderItem: (oldIndex, newIndex) {
                       if (!edit) return;
                       music.personal.updatePlaylist(p, (p) {
@@ -677,31 +679,33 @@ class PlaylistScreen extends StatelessWidget {
                     },
                     itemBuilder: (context, index) {
                       final song = p.tracks[index];
-                      return ListTile(
+                      return SongTile(
                         key: ValueKey('${song.id}:$index'),
-                        leading: _Thumb(
-                          icon: Icons.music_note,
-                          imageUrl: song.artworkUrl,
-                        ),
-                        title: Text(
-                          song.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          song.artist.isEmpty
-                              ? music.songSource(song)
-                              : song.artist,
-                        ),
-                        onTap: () => _openSong(context, song, queue: p.tracks),
+                        song: song,
+                        queue: p.tracks,
                         trailing: edit
-                            ? IconButton(
-                                tooltip: 'Remove from playlist',
-                                icon: const Icon(Icons.remove_circle_outline),
-                                onPressed: () => music.personal.updatePlaylist(
-                                  p,
-                                  (p) => p.tracks.removeAt(index),
-                                ),
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Remove from playlist',
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline,
+                                    ),
+                                    onPressed: () =>
+                                        music.personal.updatePlaylist(
+                                          p,
+                                          (p) => p.tracks.removeAt(index),
+                                        ),
+                                  ),
+                                  ReorderableDragStartListener(
+                                    index: index,
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: Icon(Icons.drag_handle),
+                                    ),
+                                  ),
+                                ],
                               )
                             : null,
                       );
@@ -1121,7 +1125,7 @@ class _MusicLyricsScreenState extends State<MusicLyricsScreen> {
                                           ? FontWeight.w700
                                           : FontWeight.w500,
                                       color: i == active
-                                          ? NexApp.violet
+                                          ? NexMusic.violet
                                           : _muted(context),
                                     ),
                                   ),
@@ -1169,7 +1173,8 @@ class MusicDownloadsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final music = context.watch<MusicController>(), manager = music.downloads;
-    return Scaffold(
+    return _SongSelectionScaffold(
+      songs: music.downloadedSongs,
       appBar: AppBar(
         title: const Text('Downloads'),
         actions: [
@@ -1560,7 +1565,7 @@ class ListeningStatsScreen extends StatelessWidget {
             icon: const Icon(Icons.share_outlined),
             onPressed: () => _shareMusic(
               context,
-              'My week on nexApp 🎧\n${stats['minutes']} minutes · ${stats['uniqueTracks']} tracks\n${(stats['top'] as List).take(3).map((r) => (r['song'] as Map)['title']).join('\n')}',
+              'My week on nexMusic 🎧\n${stats['minutes']} minutes · ${stats['uniqueTracks']} tracks\n${(stats['top'] as List).take(3).map((r) => (r['song'] as Map)['title']).join('\n')}',
             ),
           ),
         ],
@@ -1586,7 +1591,7 @@ class ListeningStatsScreen extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.w700,
-                          color: NexApp.violet,
+                          color: NexMusic.violet,
                         ),
                       ),
                       Text(e.key),
@@ -1640,7 +1645,8 @@ class DeviceMusicScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final music = context.watch<MusicController>(),
         tracks = music.personal.localTracks.values.toList();
-    return Scaffold(
+    return _SongSelectionScaffold(
+      songs: tracks,
       appBar: AppBar(
         title: const Text('Device music'),
         actions: [

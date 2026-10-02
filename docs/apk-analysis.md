@@ -1,4 +1,4 @@
-# Music reference APK and nexApp integration
+# Music reference APK and nexMusic integration
 
 Inspected locally on 2026-09-25 using Android `aapt`, ZIP inventory, manifest,
 bundled JSON configuration and DEX inspection. Reference APKs and extracted

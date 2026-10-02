@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_discovery.dart';
-import 'package:nex_app/music_provider.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_discovery.dart';
+import 'package:nex_music/music_provider.dart';
 
 Song track(
   String provider,

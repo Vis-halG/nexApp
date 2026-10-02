@@ -19,7 +19,7 @@ class MusicWidget : AppWidgetProvider() {
             val json = try { JSONObject(context.getSharedPreferences("nex_widgets",Context.MODE_PRIVATE).getString("data","{}") ?: "{}") } catch (_: Exception) { JSONObject() }
             val current = json.optJSONObject("now")
             val view = RemoteViews(context.packageName,R.layout.music_widget)
-            view.setTextViewText(R.id.widget_title,current?.optString("title") ?: "nexApp")
+            view.setTextViewText(R.id.widget_title,current?.optString("title") ?: "nexMusic")
             view.setTextViewText(R.id.widget_artist,current?.optString("subtitle") ?: "Tap to choose music")
             view.setTextViewText(R.id.widget_toggle,if (current?.optBoolean("playing") == true) "Ⅱ" else "▶")
             view.setOnClickPendingIntent(R.id.widget_title,NexPhone.openAppIntent(context,"player",id*10))

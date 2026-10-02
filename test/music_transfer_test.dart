@@ -6,11 +6,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/listening_models.dart';
-import 'package:nex_app/music_controller.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_downloads.dart';
-import 'package:nex_app/music_provider.dart';
+import 'package:nex_music/listening_models.dart';
+import 'package:nex_music/music_controller.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_downloads.dart';
+import 'package:nex_music/music_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Song _song(String id, {String provider = ''}) => Song(

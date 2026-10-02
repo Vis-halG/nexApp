@@ -7,8 +7,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'phone_services.dart';
 
-/// Fallback installed version of nexApp (matches pubspec.yaml).
-const String currentAppVersion = '0.4.1+8023';
+/// Fallback installed version of nexMusic (matches pubspec.yaml).
+const String currentAppVersion = '0.4.2+8025';
 
 class AppUpdateInfo {
   const AppUpdateInfo({
@@ -43,7 +43,7 @@ class AppUpdateService {
 
   final HttpClient? _client;
   static const _repoOwner = 'Vis-halG';
-  static const _repoName = 'nexApp';
+  static const _repoName = 'nexMusic';
   static const _releaseApiUrl =
       'https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest';
 
@@ -118,7 +118,7 @@ class AppUpdateService {
       final request = await client
           .getUrl(uri)
           .timeout(const Duration(seconds: 15));
-      request.headers.set(HttpHeaders.userAgentHeader, 'nexApp-AppUpdate');
+      request.headers.set(HttpHeaders.userAgentHeader, 'nexMusic-AppUpdate');
       request.headers.set(
         HttpHeaders.acceptHeader,
         'application/vnd.github+json',
@@ -181,6 +181,7 @@ class AppUpdateService {
                 matchedSize = size;
                 break; // Exact device ABI match found!
               } else if (name.contains('universal') ||
+                  // Recognize APKs from earlier releases as well.
                   name == 'nexapp.apk' ||
                   name == 'nexmusic.apk' ||
                   name == 'app-release.apk') {
@@ -235,7 +236,7 @@ class AppUpdateService {
     final shouldClose = _client == null;
     try {
       final tempDir = await getTemporaryDirectory();
-      final targetFile = File('${tempDir.path}/nexApp_update.apk');
+      final targetFile = File('${tempDir.path}/nexMusic_update.apk');
       if (await targetFile.exists()) {
         await targetFile.delete();
       }
@@ -243,7 +244,7 @@ class AppUpdateService {
       final request = await client
           .getUrl(Uri.parse(info.downloadUrl))
           .timeout(const Duration(seconds: 20));
-      request.headers.set(HttpHeaders.userAgentHeader, 'nexApp-AppUpdate');
+      request.headers.set(HttpHeaders.userAgentHeader, 'nexMusic-AppUpdate');
       final response = await request.close().timeout(
         const Duration(seconds: 30),
       );

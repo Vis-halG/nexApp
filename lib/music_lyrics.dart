@@ -174,7 +174,7 @@ Future<String> fetchMusicText(Uri uri, {int maxBytes = 2 * 1024 * 1024}) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
   try {
     final request = await client.getUrl(uri);
-    request.headers.set('User-Agent', 'nexApp/0.4.0 (music library)');
+    request.headers.set('User-Agent', 'nexMusic/0.4.0 (music library)');
     final response = await request.close().timeout(const Duration(seconds: 25));
     if (response.statusCode != 200) {
       throw HttpException('Service returned ${response.statusCode}');

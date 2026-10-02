@@ -12,7 +12,7 @@ import 'package:just_audio/just_audio.dart';
 
 /// Cloudflare Worker that sends activity notifications to the other phones
 /// (see push_worker/worker.js). Not a secret: it only accepts signed-in
-/// nexApp users. Activity is not reported while it is empty.
+/// nexMusic users. Activity is not reported while it is empty.
 const pushWorkerUrl = String.fromEnvironment(
   'PUSH_WORKER_URL',
   defaultValue: 'https://nexmusic-push.vishalgupta25989.workers.dev',
@@ -72,7 +72,7 @@ Activity categoryDeleteActivity(String name, {int songs = 0}) => (
 );
 
 /// Shows playback controls on the lock screen and in the notification bar,
-/// and keeps music playing while nexApp is in the background.
+/// and keeps music playing while nexMusic is in the background.
 class NexAudioHandler extends BaseAudioHandler with SeekHandler {
   NexAudioHandler(this.player) {
     bindPlayer(player);
@@ -370,7 +370,10 @@ class PhoneServices {
         final notification = message.notification;
         if (notification == null) return;
         unawaited(
-          showActivity(notification.title ?? 'nexApp', notification.body ?? ''),
+          showActivity(
+            notification.title ?? 'nexMusic',
+            notification.body ?? '',
+          ),
         );
       });
     } catch (error) {

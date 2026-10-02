@@ -1,10 +1,10 @@
-# nexApp
+# nexMusic
 
 Flutter app for shared music, online songs and videos.
 Signed-in listeners can upload songs and videos into shared categories. Files
 are stored on Cloudinary; Firebase handles login and the shared listing.
 
-Version `0.4.1+8023` has four tabs: Home, Stream, Library and Profile. Home
+Version `0.4.2+8025` has four tabs: Home, Stream, Library and Profile. Home
 groups songs and videos into recently played/watched, liked, most played and
 never played collections. Stream combines JioSaavn and YouTube Music with
 Quick Picks, song radio and artist browsing. Available music videos open from
@@ -17,8 +17,8 @@ retry controls. Uploaded-file artist tags are read on Android; missing tags can
 be set from song options. These supplemental tags stay with the account on this
 device and do not require changes to the existing backend rules.
 
-The repository is now [Vis-halG/nexApp](https://github.com/Vis-halG/nexApp).
-Public app names, desktop windows and release APKs use `nexApp`. Registered
+The repository is now [Vis-halG/nexMusic](https://github.com/Vis-halG/nexMusic).
+Public app names, desktop windows and release APKs use `nexMusic`. Registered
 Android/iOS bundle IDs, signing keys, Firebase project, notification channels,
 Cloudinary folders and existing device storage keys retain their original IDs
 so this release updates existing installations and keeps their data.
@@ -35,7 +35,7 @@ provider limitations and live checks.
 ## Firebase project
 
 - Account: `vishalgupta25989@gmail.com`
-- App branding: `nexApp`
+- App branding: `nexMusic`
 - Project ID: `nexmusic-25989`
 - Android: `com.thenex.nex_music`
 - iOS: `com.thenex.nexMusic`
@@ -66,6 +66,12 @@ Personal playlists, queue editing/restore, repeat modes, sleep timer, lyrics/tra
 
 ## Features
 
+- Long press a song or card to select multiple songs. Select all or clear the
+  selection, then play/shuffle selected audio, queue songs in order, add them
+  to a new or existing playlist, like/unlike, download, remove downloads, or
+  share their names and public links. Editable playlists also support removing
+  selected tracks. Back exits selection; switching tabs, filters or accounts
+  resets it. Playlist drag handles keep reordering separate from selection.
 - Google login through Firebase Authentication, plus guest access to device music and online discovery.
 - Shared catalogue: any signed-in user creates categories and uploads files up
   to 100 MB each.
@@ -106,7 +112,7 @@ Personal playlists, queue editing/restore, repeat modes, sleep timer, lyrics/tra
 - Any song or video can be downloaded from its ⋮ menu and then plays from the
   phone without internet (Profile → Downloads). A download is removed when
   its uploader deletes the song.
-- Sharing a YouTube link to nexApp opens the upload screen straight away.
+- Sharing a YouTube link to nexMusic opens the upload screen straight away.
   Out of sight behind the app, the in-app browser searches "youtube to mp3",
   opens the top ordinary result (Google's adverts are skipped) and walks the
   converter through Paste, Convert and Download, while the upload screen shows
@@ -129,7 +135,7 @@ Personal playlists, queue editing/restore, repeat modes, sleep timer, lyrics/tra
   again. This only works as well as the site does: some converters answer
   every download press with an advert (ytmp3.cc did when this was written),
   so no file arrives from them. The browser has no back, forward or shortcut
-  buttons. Other shared links open the "Save link" screen. nexApp never
+  buttons. Other shared links open the "Save link" screen. nexMusic never
   contacts YouTube itself.
 - A song or video downloaded inside the in-app browser is saved to the app
   cache and opens the upload screen with the file ready; a category still has
@@ -218,8 +224,11 @@ needs two phones signed in with different Google accounts.
    with `avdmanager`, set `hw.keyboard = yes` and `PlayStore.enabled = yes` in
    its `config.ini` so the laptop keyboard works, then cold boot it.
 
+Use `flutter emulators` to find your emulator ID, then replace
+`your-emulator-id` below with that ID.
+
 ```powershell
-flutter emulators --launch nexApp_API_35
+flutter emulators --launch your-emulator-id
 flutter run -d emulator-5554
 ```
 
@@ -234,7 +243,7 @@ possible:
 powershell -ExecutionPolicy Bypass -File tool\small_apk\build.ps1
 ```
 
-It writes `build\nexApp-arm64.apk`, which installs on arm64 phones only. The
+It writes `build\nexMusic-arm64.apk`, which installs on arm64 phones only. The
 script builds an obfuscated `android-arm64` release and recompresses the APK
 with zopfli (Node.js is needed; `@gfx/zopfli` is installed on the first run).
 It then runs `zipalign` and signs with the same debug key as the release build,
@@ -288,7 +297,7 @@ storage.rules              private library file rules (Blaze only)
 
 ### 1. How the In-App Update System Works
 1. When the app starts up, `_checkAutoUpdate()` in `lib/music_ui.dart` queries the GitHub Releases API:
-   `https://api.github.com/repos/Vis-halG/nexApp/releases/latest`
+   `https://api.github.com/repos/Vis-halG/nexMusic/releases/latest`
 2. It compares the **remote build number** from the GitHub release tag (e.g. `v0.2.9+4015` → build `4015`) against the device's **currently installed build number** (e.g. `4014`).
 3. If `remote.build > installed.build`, the **"Update Available" popup** immediately appears on the user's screen.
 4. Tapping **"Update Now"** downloads the APK matching the device architecture (`arm64-v8a`, `armeabi-v7a`, or `Universal`) with a real-time progress bar, and then invokes the native Android installer.
@@ -334,10 +343,10 @@ git push origin master
 #### Step 4: Automated GitHub Release (Hands-Off)
 Once pushed to `master`, GitHub Actions (`.github/workflows/release.yml`) automatically:
 - Reads the new version tag (e.g., `v0.2.9+4015`) from `pubspec.yaml`.
-- Builds optimized APKs (`nexApp-arm64-v8a.apk`, `nexApp-armeabi-v7a.apk`, `nexApp-Universal.apk`, `nexApp.apk`).
+- Builds optimized APKs (`nexMusic-arm64-v8a.apk`, `nexMusic-armeabi-v7a.apk`, `nexMusic-Universal.apk`, `nexMusic.apk`).
 - Signs the APKs with the release keystore.
 - Publishes a new GitHub Release with the tag `v0.2.9+4015` and marks it as **Latest**.
 
 #### Step 5: Verify on Device
-- When users open their installed nexApp app (which has build `4014`), the app contacts GitHub, sees build `4015`, and shows the **Update Available** popup.
+- When users open their installed nexMusic app (which has build `4014`), the app contacts GitHub, sees build `4015`, and shows the **Update Available** popup.
 - Users can also go to **Profile → Check for updates** to trigger the check manually.

@@ -1,6 +1,6 @@
-# nexApp music feature audit and roadmap
+# nexMusic music feature audit and roadmap
 
-Audit date: 1 October 2026 (Asia/Calcutta). App: `NexMusic`, branded `nexApp`, version `0.3.3+8021`.
+Audit date: 1 October 2026 (Asia/Calcutta). App: `nexMusic`, version `0.3.3+8021`.
 
 **Recommendation:** pehle offline-library visibility aur account isolation improve karo; phir personal playlists, editable queue, sleep timer, account sync aur lyrics add karo. Uske baad discovery aur social listening expand karo.
 
@@ -60,7 +60,7 @@ README also says the unsigned Cloudinary preset lacks format/size restrictions a
 
 Effort is relative: S = small bounded change; M = several screens/model changes; L = substantial playback/backend/platform work. These are planning estimates, not delivery commitments.
 
-| Feature | Verified competitor reference | nexApp gap | Proposed scope | Priority / effort |
+| Feature | Verified competitor reference | nexMusic gap | Proposed scope | Priority / effort |
 | --- | --- | --- | --- | --- |
 | Personal playlists | [YouTube Music library and playlists](https://support.google.com/youtubemusic/answer/6313542?hl=en), [Apple Music playlist editing](https://support.apple.com/en-us/118494) | Shared categories and liked collections exist; custom personal playlists absent. | Create, rename, cover, add/remove/reorder tracks, duplicate and multi-source references. | P1 / M |
 | Editable playback queue | [Spotify Play Queue](https://support.spotify.com/us/article/play-queue/) | Internal queue exists; no queue editor. | Play next, add to queue, remove, reorder, clear and restore queue after restart. | P1 / M |
@@ -75,7 +75,7 @@ Effort is relative: S = small bounded change; M = several screens/model changes;
 | Seamless audio/video switch | [Spotify music-video switching](https://support.spotify.com/us/article/your-premium-benefits/) | Watch Video action exists; position transfer is absent. | Carry timestamp between matching recordings and restore audio when closing video. | P2 / M |
 | Prompt-based playlists | [Spotify prompted playlists](https://support.spotify.com/us/article/your-premium-benefits/) | No text-prompt playlist flow. | “Rainy evening ke Hindi songs” → constrained catalogue search and saved playlist; start with mood/language rules, then evaluate AI. | P3 / L |
 
-Do not assume lossless is absent from competitors: Spotify's current Premium documentation lists lossless streaming. For nexApp, FLAC upload acceptance does not itself establish a lossless streaming catalogue. Lossless and spatial audio depend on real source media and platform support; a settings toggle cannot create them.
+Do not assume lossless is absent from competitors: Spotify's current Premium documentation lists lossless streaming. For nexMusic, FLAC upload acceptance does not itself establish a lossless streaming catalogue. Lossless and spatial audio depend on real source media and platform support; a settings toggle cannot create them.
 
 ## Additional features suitable for this app
 

@@ -3,7 +3,7 @@ import {after,before,beforeEach,test} from 'node:test';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
 import {doc,setDoc,getDoc,getDocs,deleteDoc,collection,query,where,writeBatch,updateDoc,serverTimestamp,Timestamp,arrayUnion} from 'firebase/firestore';
 let env;
-before(async () => {env=await initializeTestEnvironment({projectId:'demo-nexapp',firestore:{host:'127.0.0.1',port:8086,rules:await readFile(new URL('../firestore.rules',import.meta.url),'utf8')}});});
+before(async () => {env=await initializeTestEnvironment({projectId:'demo-nexmusic',firestore:{host:'127.0.0.1',port:8086,rules:await readFile(new URL('../firestore.rules',import.meta.url),'utf8')}});});
 beforeEach(async () => env.clearFirestore());
 after(async () => env?.cleanup());
 const db = uid => env.authenticatedContext(uid).firestore();

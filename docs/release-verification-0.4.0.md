@@ -1,14 +1,14 @@
-# nexApp 0.4.0 release verification
+# nexMusic 0.4.0 release verification
 
 Verified 2 October 2026 (Asia/Calcutta). Package `com.thenex.nex_music`, version `0.4.0`, build `8022`.
 
 ## Artifact
 
-- APK: `build/app/outputs/flutter-apk/nexApp-0.4.0-arm64.apk`.
+- APK: `build/app/outputs/flutter-apk/nexMusic-0.4.0-arm64.apk`.
 - Native release build: passed; Android arm64, min SDK 24, target SDK 36.
 - Size: 21,154,592 bytes (20.2 MiB).
 - SHA-256: `07b294b08d794ccb997d89702e81583ac249e37aae20fd43de4f174f1c6c7c2d`.
-- Signature verification: passed using the configured NexMusic release certificate.
+- Signature verification: passed using the configured nexMusic release certificate.
 - Public signing certificate SHA-256: `fdb7dd5ee63c5b6668debc4739c0f71261fb7f9ca7547b12a95f3409329e54ab`. This can be used in the Worker Android App Links configuration; it is not a private key.
 
 ## Automated checks

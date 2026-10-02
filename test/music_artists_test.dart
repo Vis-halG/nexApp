@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/music_artists.dart';
-import 'package:nex_app/music_controller.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_ui.dart';
-import 'package:nex_app/personal_music.dart';
+import 'package:nex_music/music_artists.dart';
+import 'package:nex_music/music_controller.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_ui.dart';
+import 'package:nex_music/personal_music.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

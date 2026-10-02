@@ -52,7 +52,7 @@ object NexPhone {
     fun launchAction(intent: Intent?): String? = intent?.getStringExtra(ACTION_EXTRA)
         ?: intent?.data?.takeIf { (it.scheme == "nexmusic" && it.host == "share") || (it.scheme == "https" && it.host == "nexmusic-push.vishalgupta25989.workers.dev" && it.path?.startsWith("/share/") == true) }?.let { "link:$it" }
 
-    /** Opens nexApp and, when [action] is set, runs it (e.g. `play:<id>`). */
+    /** Opens nexMusic and, when [action] is set, runs it (e.g. `play:<id>`). */
     fun openAppIntent(context: Context, action: String?, requestCode: Int): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -262,7 +262,7 @@ object NexPhone {
         try {
             manager(context).notify(id, notification.build())
         } catch (error: SecurityException) {
-            // Notifications are turned off for nexApp.
+            // Notifications are turned off for nexMusic.
         }
     }
 }

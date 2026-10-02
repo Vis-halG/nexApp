@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/app_update.dart';
+import 'package:nex_music/app_update.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -27,8 +27,8 @@ class _Response extends Stream<List<int>> implements HttpClientResponse {
             'body': 'Playback fixes',
             'assets': [
               {
-                'name': 'nexApp.apk',
-                'browser_download_url': 'https://example.test/nexApp.apk',
+                'name': 'nexMusic.apk',
+                'browser_download_url': 'https://example.test/nexMusic.apk',
                 'size': 21000000,
               },
             ],
@@ -52,21 +52,30 @@ class _Request extends Fake implements HttpClientRequest {
 }
 
 class _Client extends Fake implements HttpClient {
+  Uri? requestedUrl;
   @override
-  Future<HttpClientRequest> getUrl(Uri url) async => _Request();
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    requestedUrl = url;
+    return _Request();
+  }
 }
 
 void main() {
   test(
     'release response selects an APK and recognizes a newer installed build',
     () async {
-      final service = AppUpdateService(_Client());
+      final client = _Client();
+      final service = AppUpdateService(client);
       // Simulate being on earlier version 0.2.0+4002:
       final update = await service.checkForUpdate(currentVersion: '0.2.0+4002');
       print('Update detected: ${update?.displayVersion}');
       print('Download URL: ${update?.downloadUrl}');
       print('Size: ${update?.formattedSize}');
       expect(update, isNotNull);
+      expect(
+        client.requestedUrl.toString(),
+        'https://api.github.com/repos/Vis-halG/nexMusic/releases/latest',
+      );
       expect(update!.versionName.isNotEmpty, isTrue);
       expect(update.buildNumber, greaterThan(4002));
       expect(update.downloadUrl, endsWith('.apk'));

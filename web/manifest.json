@@ -1,6 +1,6 @@
 {
-    "name": "nexApp",
-    "short_name": "nexApp",
+    "name": "nexMusic",
+    "short_name": "nexMusic",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

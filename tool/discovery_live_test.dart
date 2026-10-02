@@ -1,8 +1,8 @@
 // Run explicitly with: flutter test tool/discovery_live_test.dart
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/music_provider.dart';
-import 'package:nex_app/music_discovery.dart';
+import 'package:nex_music/music_provider.dart';
+import 'package:nex_music/music_discovery.dart';
 
 void main() {
   test('live combined discovery and both radio providers', () async {

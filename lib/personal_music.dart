@@ -219,6 +219,14 @@ class PersonalMusic extends ChangeNotifier {
     updatePlaylist(p, (p) => p.tracks.add(song));
   }
 
+  /// Validate the whole batch before changing or syncing the playlist.
+  void addSongsToPlaylist(MusicPlaylist p, Iterable<Song> songs) {
+    updatePlaylist(p, (candidate) {
+      final ids = candidate.tracks.map((s) => s.id).toSet();
+      candidate.tracks.addAll(songs.where((s) => ids.add(s.id)));
+    });
+  }
+
   void deletePlaylist(MusicPlaylist p) {
     if (p.ownerUid != uid) {
       throw StateError('Only the owner can delete a playlist.');
@@ -261,13 +269,20 @@ class PersonalMusic extends ChangeNotifier {
   }
 
   void recordLike(Song song, bool liked) {
-    final row = activity.putIfAbsent(
-      song.id,
-      () => {'song': trackJson(song, cloud: true)},
-    );
-    row['liked'] = liked;
-    row['likedAt'] = DateTime.now().millisecondsSinceEpoch;
-    _dirtyActivity.add(song.id);
+    recordLikes([song], liked);
+  }
+
+  void recordLikes(Iterable<Song> songs, bool liked) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final song in songs) {
+      final row = activity.putIfAbsent(
+        song.id,
+        () => {'song': trackJson(song, cloud: true)},
+      );
+      row['liked'] = liked;
+      row['likedAt'] = now;
+      _dirtyActivity.add(song.id);
+    }
     changed();
   }
 

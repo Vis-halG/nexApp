@@ -1,6 +1,6 @@
 # Music expansion implementation tracker
 
-Implementation: nexApp `0.4.0+8022`. Checked items describe code and native adapters; production activation and physical-device validation are listed below.
+Implementation: nexMusic `0.4.0+8022`. Checked items describe code and native adapters; production activation and physical-device validation are listed below.
 
 Requested scope: build the complete feature roadmap from the 1 October 2026 audit, using the existing Firebase / Cloudflare backend.
 

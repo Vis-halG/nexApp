@@ -266,7 +266,7 @@ class ListeningQueue {
 
 String exportPlaylist(MusicPlaylist playlist) =>
     const JsonEncoder.withIndent('  ').convert({
-      'format': 'nexApp-playlist',
+      'format': 'nexMusic-playlist',
       'version': 1,
       'playlist': playlist.toJson(cloud: true),
     });
@@ -274,10 +274,10 @@ String exportPlaylist(MusicPlaylist playlist) =>
 MusicPlaylist importPlaylist(String input, String uid) {
   final row = jsonDecode(input);
   if (row is! Map ||
-      row['format'] != 'nexApp-playlist' ||
+      !{'nexMusic-playlist', 'nexApp-playlist'}.contains(row['format']) ||
       row['version'] != 1 ||
       row['playlist'] is! Map) {
-    throw const FormatException('Choose a nexApp playlist JSON file.');
+    throw const FormatException('Choose a nexMusic playlist JSON file.');
   }
   final source = MusicPlaylist.fromJson(
     Map<String, dynamic>.from(row['playlist'] as Map),

@@ -116,7 +116,8 @@ class _MusicDiscoveryScreenState extends State<MusicDiscoveryScreen> {
   @override
   Widget build(BuildContext context) {
     final music = context.watch<MusicController>();
-    return Scaffold(
+    return _SongSelectionScaffold(
+      songs: tracks,
       appBar: AppBar(
         title: Text(widget.prompt ? 'Create a mix' : 'Discover music'),
       ),
@@ -251,55 +252,75 @@ Widget _discoveryTile(
   Song song,
   List<Song> tracks, {
   bool explain = false,
-}) => ListTile(
-  leading: _Thumb(icon: Icons.music_note, imageUrl: song.artworkUrl),
-  title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-  subtitle: Text(song.artist),
-  onTap: () => _openSong(context, song, queue: tracks),
-  trailing: PopupMenuButton<String>(
-    tooltip: 'Song options',
-    itemBuilder: (_) => [
-      const PopupMenuItem(value: 'preview', child: Text('Preview 30 seconds')),
-      const PopupMenuItem(value: 'more', child: Text('More options')),
-      if (explain)
-        const PopupMenuItem(value: 'reason', child: Text('Why this track?')),
-    ],
-    onSelected: (value) {
-      if (value == 'preview') {
-        _previewSong(context, song);
-      } else if (value == 'reason') {
-        final music = context.read<MusicController>();
-        final settings = music.personal.settings;
-        final score =
-            (music.personal.stats()['feedback'] as Map)[song.id] as int? ?? 0;
-        _sheet(
-          context,
-          (_) => [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                [
-                  'Found in the music catalogue for this search.',
-                  if (settings.language != 'Any' &&
-                      song.language.toLowerCase() ==
-                          settings.language.toLowerCase())
-                    'Matches your ${settings.language} language preference.',
-                  if (score > 0) 'You have completed this track recently.',
-                  if (score < 0) 'Recent skips reduce this track’s priority.',
-                  if (music.recentSongs.any((s) => s.id == song.id))
-                    'Recently played tracks receive a lower priority to reduce repeats.',
-                  'Hidden songs and artists are excluded from discovery mixes.',
-                ].join('\n\n'),
-              ),
+}) => Builder(
+  builder: (context) {
+    final selection = context.watch<SongSelection?>();
+    return ListTile(
+      selected: selection?.contains(song) ?? false,
+      selectedTileColor: NexMusic.violet.withValues(alpha: 0.12),
+      leading: _Thumb(icon: Icons.music_note, imageUrl: song.artworkUrl),
+      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(song.artist),
+      onTap: () => _openSong(context, song, queue: tracks),
+      onLongPress: () => _selectSong(context, song, tracks),
+      trailing: selection?.active == true
+          ? _songCheckbox(context, song, tracks)
+          : PopupMenuButton<String>(
+              tooltip: 'Song options',
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'preview',
+                  child: Text('Preview 30 seconds'),
+                ),
+                const PopupMenuItem(value: 'more', child: Text('More options')),
+                if (explain)
+                  const PopupMenuItem(
+                    value: 'reason',
+                    child: Text('Why this track?'),
+                  ),
+              ],
+              onSelected: (value) {
+                if (value == 'preview') {
+                  _previewSong(context, song);
+                } else if (value == 'reason') {
+                  final music = context.read<MusicController>();
+                  final settings = music.personal.settings;
+                  final score =
+                      (music.personal.stats()['feedback'] as Map)[song.id]
+                          as int? ??
+                      0;
+                  _sheet(
+                    context,
+                    (_) => [
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Text(
+                          [
+                            'Found in the music catalogue for this search.',
+                            if (settings.language != 'Any' &&
+                                song.language.toLowerCase() ==
+                                    settings.language.toLowerCase())
+                              'Matches your ${settings.language} language preference.',
+                            if (score > 0)
+                              'You have completed this track recently.',
+                            if (score < 0)
+                              'Recent skips reduce this track’s priority.',
+                            if (music.recentSongs.any((s) => s.id == song.id))
+                              'Recently played tracks receive a lower priority to reduce repeats.',
+                            'Hidden songs and artists are excluded from discovery mixes.',
+                          ].join('\n\n'),
+                        ),
+                      ),
+                    ],
+                    title: 'Why this track?',
+                  );
+                } else {
+                  _songActions(context, song);
+                }
+              },
             ),
-          ],
-          title: 'Why this track?',
-        );
-      } else {
-        _songActions(context, song);
-      }
-    },
-  ),
+    );
+  },
 );
 
 Future<void> _previewSong(BuildContext context, Song song) =>
@@ -417,7 +438,8 @@ class _ArtistAlbumScreenState extends State<ArtistAlbumScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => _SongSelectionScaffold(
+    songs: tracks,
     appBar: AppBar(
       title: Text(widget.album ? widget.song.album : widget.song.artist),
     ),

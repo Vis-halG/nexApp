@@ -53,7 +53,7 @@ class _MusicCastScreenState extends State<MusicCastScreen> {
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Icon(Icons.cast, size: 72, color: NexApp.violet),
+        const Icon(Icons.cast, size: 72, color: NexMusic.violet),
         const SizedBox(height: 20),
         Text(
           widget.song.title,

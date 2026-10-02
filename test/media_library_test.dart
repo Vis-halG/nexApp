@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/media_library.dart';
-import 'package:nex_app/music_data.dart';
+import 'package:nex_music/media_library.dart';
+import 'package:nex_music/music_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Song _song(String id, {String provider = 'jiosaavn', String kind = 'audio'}) =>

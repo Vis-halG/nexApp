@@ -497,6 +497,57 @@ extension MusicListeningActions on MusicController {
     announce(next ? 'Playing next: ${song.title}' : 'Added to queue');
   }
 
+  Future<void> addSongsToQueue(
+    Iterable<Song> songs, {
+    bool next = false,
+  }) async {
+    final tracks = {
+      for (final s in songs.where((s) => !s.isVideo)) s.id: s,
+    }.values.toList();
+    if (tracks.isEmpty) return;
+    // Inserting every track directly after the current one reverses the batch.
+    for (final song in next ? tracks.reversed : tracks) {
+      playback.queue.add(song, next: next);
+    }
+    await playback.queueChanged();
+    announce(
+      next ? 'Selected songs will play next' : 'Selected songs added to queue',
+    );
+  }
+
+  Future<void> playSelectedSongs(
+    List<Song> songs, {
+    bool shuffle = false,
+  }) async {
+    final tracks = {
+      for (final s in songs.where((s) => !s.isVideo)) s.id: s,
+    }.values.toList();
+    if (tracks.isEmpty) return;
+    if (shuffle) tracks.shuffle();
+    playback.queue.setShuffle(shuffle);
+    await play(tracks.first, from: tracks);
+  }
+
+  void setSongsLiked(Iterable<Song> songs, bool value) {
+    final tracks = {
+      for (final song in songs.where((s) => isLiked(s) != value)) song.id: song,
+    }.values.toList();
+    if (tracks.isEmpty) return;
+    for (final song in tracks) {
+      if (value) {
+        liked.add(song.id);
+      } else {
+        liked.remove(song.id);
+      }
+    }
+    unawaited(
+      _prefs.setStringList(_accountKey('likedSongIds'), liked.toList()),
+    );
+    library.setSongsLiked(tracks, value);
+    personal.recordLikes(tracks, value);
+    notifyListeners();
+  }
+
   Future<void> removeFromQueue(String id) async {
     playback.queue.remove(id);
     await playback.queueChanged();

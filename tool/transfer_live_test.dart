@@ -3,10 +3,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nex_app/listening_models.dart';
-import 'package:nex_app/music_data.dart';
-import 'package:nex_app/music_downloads.dart';
-import 'package:nex_app/music_provider.dart';
+import 'package:nex_music/listening_models.dart';
+import 'package:nex_music/music_data.dart';
+import 'package:nex_music/music_downloads.dart';
+import 'package:nex_music/music_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

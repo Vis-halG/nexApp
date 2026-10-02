@@ -78,7 +78,7 @@ class MusicFeatures(private val activity: Activity) {
                     require(url.startsWith("https://")) { "This device file cannot be cast." }
                     val video = call.argument<Boolean>("video") == true
                     val metadata = MediaMetadata(if (video) MediaMetadata.MEDIA_TYPE_MOVIE else MediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
-                        putString(MediaMetadata.KEY_TITLE,call.argument<String>("title") ?: "nexApp")
+                        putString(MediaMetadata.KEY_TITLE,call.argument<String>("title") ?: "nexMusic")
                         putString(MediaMetadata.KEY_ARTIST,call.argument<String>("artist") ?: "")
                         call.argument<String>("art")?.takeIf { it.startsWith("https://") }?.let { addImage(WebImage(Uri.parse(it))) }
                     }

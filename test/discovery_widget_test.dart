@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:nex_app/main.dart';
-import 'package:nex_app/music_controller.dart';
-import 'package:nex_app/music_ui.dart';
+import 'package:nex_music/main.dart';
+import 'package:nex_music/music_controller.dart';
+import 'package:nex_music/music_ui.dart';
 import 'music_discovery_test.dart' show FakeMusicProvider, track;
 
 void main() {
@@ -27,7 +27,7 @@ void main() {
       ],
     )..signedIn = true;
     await tester.pumpWidget(
-      ChangeNotifierProvider.value(value: controller, child: const NexApp()),
+      ChangeNotifierProvider.value(value: controller, child: const NexMusic()),
     );
     await tester.pumpAndSettle();
     expect(
@@ -72,7 +72,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Watch Music Video'), findsOneWidget);
     await tester.pumpWidget(
-      ChangeNotifierProvider.value(value: controller, child: const NexApp()),
+      ChangeNotifierProvider.value(value: controller, child: const NexMusic()),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Profile'));

@@ -12,7 +12,7 @@
     <!-- In-app APK updates without needing manual browser installs -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
-        android:label="nexApp"
+        android:label="nexMusic"
         android:name="${applicationName}"
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher">
@@ -49,7 +49,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="nexmusic-push.vishalgupta25989.workers.dev" android:pathPrefix="/share/"/>
             </intent-filter>
-            <!-- Makes nexApp appear in supported Android share sheets. -->
+            <!-- Makes nexMusic appear in supported Android share sheets. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -102,7 +102,7 @@
             android:value="2" />
         <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME" android:value="com.thenex.nex_music.NexCastOptions" />
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
-        <receiver android:name=".MusicWidget" android:exported="true" android:label="nexApp music">
+        <receiver android:name=".MusicWidget" android:exported="true" android:label="nexMusic music">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/music_widget_info" />
         </receiver>
